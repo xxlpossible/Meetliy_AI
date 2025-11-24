@@ -1,0 +1,6 @@
+database_url:
+  "mysql+pymysql://root:123456@127.0.0.1:3306/graduation_db?charset=utf8mb4"
+
+redis_url: "redis://127.0.0.1:6379/7"
+
+celery_redis_url: "redis://127.0.0.1:6379/9"
