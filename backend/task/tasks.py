@@ -7,13 +7,6 @@ from utils.chroma_db import chromadb_client
 from .celery_app import celery_app
 
 
-@celery_app.task
-def add(x, y):
-    print(f"执行加法任务: {x} + {y}")
-    result = x + y
-    print(f"计算结果: {result}")
-    return result
-
 
 @celery_app.task
 def transcription(

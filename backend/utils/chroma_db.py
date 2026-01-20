@@ -52,12 +52,14 @@ class ChromaDBClient:
     def add_documents(
             self,
             collection_name: str,
+            metadata: List[dict],
             documents: List[str],
             ids: Optional[List[str]] = None
     ):
         """
         向集合中添加文本，Chroma 会自动生成向量（embedding_function 已绑定）
         （为避免单次请求过大，自动将 documents 每 20 条拆分为一批）
+        :param metadata:
         :param collection_name: 集合名称
         :param documents: 文本列表
         :param ids: 每条数据的唯一ID（可选）
@@ -85,9 +87,11 @@ class ChromaDBClient:
             end = min(start + batch_size, total_docs)
             docs_batch = documents[start:end]
             ids_batch = ids[start:end]
+            metadata_batch = metadata[start:end]
 
             try:
                 collection.add(
+                    metadatas=metadata_batch,
                     documents=docs_batch,
                     ids=ids_batch
                 )
@@ -120,6 +124,34 @@ class ChromaDBClient:
         logger.info(f"已从集合 {collection_name} 查询文本: {query_text}")
         return result
 
+    def get_by_file_id_and_knowledge_id(self, file_id: str, knowledge_id: str):
+        collection_name = f"collection_{knowledge_id}"
+        collection = self.get_or_create_collection(collection_name)
+        results = collection.get(
+            where={"file_id": file_id},
+            include=["documents", "metadatas"]
+        )
+        logger.info(f"已从集合 {collection_name} 查询文件片段: {file_id}")
+        return results
+
+    def delete_by_file_id(self, knowledge_id: str, file_id: str):
+        """
+        根据 file_id 删除指定知识库中的所有相关向量片段
+        """
+        collection_name = f"collection_{knowledge_id}"
+        # 获取集合（如果集合不存在，get_or_create 也没问题，但通常删除时集合应该存在）
+        try:
+            collection = self.client.get_collection(collection_name)
+        except Exception:
+            # 如果集合都不存在，说明肯定没数据，直接返回即可
+            logger.warning(f"集合 {collection_name} 不存在，跳过 Chroma 删除步骤")
+            return
+
+        # 使用 where 条件直接删除
+        collection.delete(
+            where={"file_id": file_id}
+        )
+        logger.info(f"已从集合 {collection_name} 中删除 file_id={file_id} 的所有向量")
 
 # 单例实例（方便在项目中直接导入使用）
 chromadb_client = ChromaDBClient()

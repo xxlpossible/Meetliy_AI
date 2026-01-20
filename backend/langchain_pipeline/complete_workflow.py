@@ -1,6 +1,7 @@
 import time
-from langchain.schema.runnable import RunnableSequence, RunnableParallel, RunnableLambda
 from typing import Dict, Any, List, Tuple
+
+from langchain_core.runnables import RunnableLambda
 
 from langchain_pipeline.audio_workflow import AudioProcessingWorkflow
 from langchain_pipeline.text_workflow import MeetingWorkflow

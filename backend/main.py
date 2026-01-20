@@ -14,20 +14,29 @@ def create_app():
         version="0.0.1"
     )
 
+    # ✅ 修正部分：显式指定前端的 Origin
+    origins = [
+        "http://localhost:5173",  # 你的前端开发地址
+        "http://127.0.0.1:5173",  # 以防你用 IP 访问前端
+        "http://localhost",  # 以防万一
+        "http://127.0.0.1"  # 以防万一
+    ]
+
+    # ✅ 先加中间件（虽然顺序在这里影响不大，但推荐尽早）
+    fastapi_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,  # 明确指定前端地址
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     fastapi_app.include_router(router)
     return fastapi_app
 
 
 app = create_app()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 允许的源，可以设置为具体的前端地址，比如["http://localhost:5500"]，使用"*"允许所有源
-    allow_credentials=True,
-    allow_methods=["*"],  # 允许的HTTP方法
-    allow_headers=["*"],  # 允许的HTTP头
-)
 
-dotenv.load_dotenv("..\.env")
+dotenv.load_dotenv("..\\.env")
 
 if __name__ == '__main__':
     import uvicorn

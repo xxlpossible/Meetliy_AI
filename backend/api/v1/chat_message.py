@@ -17,11 +17,13 @@ async def user_qa(body: UserQA):
     task_id = body.task_id
     question = body.question
     collection_id = f"collection_{task_id}"
+    # TODO 后续可改为WebSocket接口 使用LangChain的ChatMessageHistory来管理记忆
     history = body.history
 
     async def stream_response():
         """生成流式响应"""
         try:
+            # 进行初步检索
             search_result = chromadb_client.query(
                 collection_name=collection_id,
                 query_text=question,
@@ -32,6 +34,7 @@ async def user_qa(body: UserQA):
             return
 
         context_docs = search_result.get("documents", [[]])
+        # 进行重排序
         reranked_docs = await rerank.rerank_context(question, context_docs, top_k=5)
         texts = [item['text'] for item in reranked_docs]
         context_text = "\n".join(texts) if texts else ""

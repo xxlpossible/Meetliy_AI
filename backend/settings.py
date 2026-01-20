@@ -3,8 +3,9 @@ from typing import Optional, Union, Dict
 
 import yaml
 
-from langchain.pydantic_v1 import BaseSettings
+
 from loguru import logger
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

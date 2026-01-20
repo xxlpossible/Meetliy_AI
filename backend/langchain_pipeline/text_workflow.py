@@ -1,7 +1,7 @@
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langchain_openai import ChatOpenAI
-from langchain.schema.runnable import RunnableParallel, RunnableLambda
-from langchain.schema import StrOutputParser
 from typing import Dict, Any
 from loguru import logger
 

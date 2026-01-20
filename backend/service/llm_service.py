@@ -1,6 +1,6 @@
 # backend/utils/llm_service.py
+from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
 from settings import settings
 import json
 import asyncio

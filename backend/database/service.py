@@ -45,20 +45,3 @@ class DatabaseService(Service):
             self._session.commit()
         self._session.close()
 
-    def get_session(self):
-        with Session(self.engine) as session:
-            yield session
-
-    def create_db_and_tables(self):
-        logger.debug('Creating database and tables')
-
-        for table in SQLModel.metadata.sorted_tables:
-            try:
-                table.create(self.engine, checkfirst=True)
-            except OperationalError as oe:
-                logger.warning(f'Table {table} already exists, skipping. Exception: {oe}')
-            except Exception as exc:
-                logger.error(f'Error creating table {table}: {exc}')
-                raise RuntimeError(f'Error creating table {table}') from exc
-
-        logger.debug('Database and tables created successfully')

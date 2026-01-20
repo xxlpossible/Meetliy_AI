@@ -1,6 +1,7 @@
 import time
-from langchain.schema.runnable import RunnableSequence, RunnableParallel, RunnableLambda
 from typing import Dict, Any, List, Tuple
+
+from langchain_core.runnables import RunnableLambda
 
 from service.dashscope_asr import DashScopeASRService
 from service.noise_reduce_service import NoiseReductionService
