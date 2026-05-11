@@ -27,7 +27,7 @@ async def user_qa(body: UserQA):
             search_result = chromadb_client.query(
                 collection_name=collection_id,
                 query_text=question,
-                n_results=20
+                n_results=40
             )
         except Exception as e:
             yield json.dumps({"error": f"ChromaDB 查询失败: {e}"}) + "\n"
@@ -35,7 +35,7 @@ async def user_qa(body: UserQA):
 
         context_docs = search_result.get("documents", [[]])
         # 进行重排序
-        reranked_docs = await rerank.rerank_context(question, context_docs, top_k=5)
+        reranked_docs = await rerank.rerank_context(question, context_docs, top_k=10)
         texts = [item['text'] for item in reranked_docs]
         context_text = "\n".join(texts) if texts else ""
 

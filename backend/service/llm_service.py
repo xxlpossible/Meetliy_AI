@@ -49,11 +49,12 @@ class LLMService:
 
         prompt_template = PromptTemplate.from_template(
             """
-            你是一个会议智能助理，请基于以下会议记录内容和历史对话回答用户的问题。
+            你是一个会议智能助理，请基于给出的会议记录内容，相关知识库文件片段以及历史对话回答用户的问题。
 
-            【会议内容】
+            【会议内容与相关知识库文件片段】
             {context}
-
+            
+            【历史对话】
             {history_str}
 
             【当前问题】

@@ -19,7 +19,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(default=None)):
     suffix = file.filename.split(".")[-1].lower()
-    if suffix not in ["pdf", "doc", "docx"]:
+    if suffix not in ["pdf", "doc", "docx", "xls", "xlsx"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
     tmp_file = None
@@ -32,7 +32,8 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
         tmp_file.close()
 
         # 2. 文档解析
-        documents = FileLoader.load_document(tmp_file.name, suffix)
+        file_loader = FileLoader()
+        documents = file_loader.load_document(file_path=tmp_file.name, file_type=suffix)
 
         # 3. 文本切分（递归标点切分）
         chunks = Splitter.split_documents(documents)
