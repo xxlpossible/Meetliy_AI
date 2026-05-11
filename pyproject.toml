@@ -12,12 +12,7 @@ celery = "^5.5.3"
 eventlet = "^0.40.3"
 
 pydantic = ">=2.6,<3.0"
-pyannote-audio = "3.1.1"
 tokenizers = "0.21.0"
-torch = {version = "^2.5.1+cu121", source = "pytorch_cu121"}
-torchvision = {version = "^0.20.1+cu121", source = "pytorch_cu121"}
-torchaudio = {version = "^2.5.1+cu121", source = "pytorch_cu121"}
-whisper-timestamped = "^1.15.9"
 loguru = "^0.7.3"
 redis = "^7.0.1"
 sqlmodel = "^0.0.27"
@@ -46,6 +41,10 @@ numpy = "2.3.5"
 doc2text = "^0.2.4"
 docx2txt = "^0.9"
 pypdf = "^6.6.0"
+unstructured = {extras = ["xlsx"], version = "^0.21.5"}
+openpyxl = "^3.1.5"
+setuptools = "^80.10.2"
+pywin32 = "^311"
 
 [[tool.poetry.source]]
 name = "pytorch_cu121"
