@@ -1,33 +1,23 @@
 # backend/utils/llm_service.py
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI  # 确保导入的是异步客户端
 from settings import settings
 import json
-import asyncio
-from typing import AsyncGenerator, List
+from typing import List
 
 
 class LLMService:
     """封装大语言模型调用逻辑（支持流式输出）"""
 
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.3):
-        openai_config = settings.get_openai_config()
-        self.model_name = model_name
-        self.temperature = temperature
-        self.base_url = openai_config["base_url"]
-        self.api_key = openai_config["api_key"]
-
-    def get_model(self) -> ChatOpenAI:
-        """初始化流式模型实例"""
-        return ChatOpenAI(
-            model=self.model_name,
-            temperature=self.temperature,
-            base_url=self.base_url,
-            api_key=self.api_key,
-            streaming=True,
+    def __init__(self):
+        qwen = settings.get_qwen_config()
+        # 初始化异步客户端
+        self.async_client = AsyncOpenAI(
+            api_key=qwen.get('api_key'),
+            base_url=qwen.get('base_url')
         )
+        self.model_name = qwen.get('model')
 
-    async def stream_answer(self, context: str, question: str, chat_history: List[str] = None) -> AsyncGenerator[str, None]:
+    async def stream_answer(self, context: str, question: str, chat_history: List[str] = None):
         """
         传入会议上下文与问题，流式返回答案。
         """
@@ -47,33 +37,35 @@ class LLMService:
                     history_str += f"用户: {assistant_msg}\n"
             history_str += "\n"
 
-        prompt_template = PromptTemplate.from_template(
-            """
-            你是一个会议智能助理，请基于给出的会议记录内容，相关知识库文件片段以及历史对话回答用户的问题。
-
-            【会议内容与相关知识库文件片段】
-            {context}
-            
-            【历史对话】
-            {history_str}
-
-            【当前问题】
-            {question}
-
-            请确保答案简明、准确，并基于会议内容进行回答。在回答时需要考虑历史对话的上下文，保持对话的连贯性。
-            如果问题与历史对话相关，请结合历史信息给出一致的回答。
-            """
+        user_content = (
+            f"【会议内容与相关知识库文件片段】\n{context}\n\n"
+            f"{history_str}"
+            f"【当前问题】\n{question}"
         )
-        prompt = prompt_template.format(context=context, question=question, history_str=history_str)
 
-        llm = self.get_model()
+        completion = await self.async_client.chat.completions.create(
+            model=self.model_name,
+            messages=[{'role': 'system', 'content': '你是一个会议智能助理，需要基于给出的会议记录内容，相关知识库文件片段以及历史对话回答用户的问题。'
+                                                    '请确保答案简明、准确，并基于会议内容进行回答。在回答时需要考虑历史对话的上下文，保持对话的连贯性。'
+                                                    '如果问题与历史对话相关，请结合历史信息给出一致的回答'},
+                      {'role': 'user', 'content': user_content}],
+            stream=True,
+            stream_options={"include_usage": True}
+        )
 
         # 使用异步流式生成器
-        async for chunk in llm.astream(prompt):
-            delta = chunk.content
-            if delta:
-                yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
-            await asyncio.sleep(0)
+        async for chunk in completion:
+            if len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    # 按照原本的格式返回
+                    yield json.dumps({"delta": delta}, ensure_ascii=False) + "\n"
+
+            # 如果需要处理 usage 信息（最后一块通常包含 usage）
+            if hasattr(chunk, 'usage') and chunk.usage is not None:
+                # 可以选择是否把 token 消耗传给前端
+                # yield json.dumps({"usage": chunk.usage.model_dump()}, ensure_ascii=False) + "\n"
+                pass
 
         yield json.dumps({"event": "done"}) + "\n"
 

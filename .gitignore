@@ -1,1 +1,4 @@
 /backend/chroma_db/
+.env
+poetry.lock
+/backend/test

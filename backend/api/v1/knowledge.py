@@ -2,12 +2,14 @@ import os
 import tempfile
 import uuid
 
+import aiofiles
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from starlette.concurrency import run_in_threadpool
 
 from api.schemas import resp_200
 from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile
-from utils.chroma_db import chromadb_client
 from utils.file_loader import FileLoader
+from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
@@ -22,60 +24,84 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
     if suffix not in ["pdf", "doc", "docx", "xls", "xlsx"]:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
-    tmp_file = None
+    tmp_path = None
+    file_id = uuid.uuid4().hex
 
     try:
         # 1. 创建 Python 原生临时文件
-        tmp_file = tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False)
-        tmp_file.write(await file.read())
-        tmp_file.flush()
-        tmp_file.close()
+        # 这里用的是同步的方法
+        # tmp_file = tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False)
+        # tmp_file.write(await file.read())
+        # tmp_file.flush()
+        # tmp_file.close()
 
-        # 2. 文档解析
-        file_loader = FileLoader()
-        documents = file_loader.load_document(file_path=tmp_file.name, file_type=suffix)
+        # 1. 异步创建临时文件路径
+        fd, tmp_path = tempfile.mkstemp(suffix=f".{suffix}")
+        os.close(fd)  # 关闭 mkstemp 返回的句柄，后面用 aiofiles 打开
 
-        # 3. 文本切分（递归标点切分）
-        chunks = Splitter.split_documents(documents)
-        file_id = uuid.uuid4().hex
+        # 2. 异步分块写入
+        async with aiofiles.open(tmp_path, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                await f.write(chunk)
 
-        # 4. 添加 metadata（非常关键）
-        for idx, chunk in enumerate(chunks):
-            chunk.metadata.update({
-                "knowledge_id": knowledge_id,
-                "file_id": file_id
-            })
-        # 提取页面内容与metadata
-        metadata_list = [chunk.metadata for chunk in chunks]
-        chunks = [chunk.page_content for chunk in chunks]
+        # 3. 将同步耗时操作放入线程池执行，避免阻塞主线程
+        # 包装一个内部函数来处理后续逻辑
+        def process_document(path, sfx, k_id, f_id, f_name):
+            loader = FileLoader()
+            docs = loader.load_document(file_path=path, file_type=sfx)
 
-        # 5. 向量入库（向量 + 原文）
-        vector_store = chromadb_client
-        vector_store.add_documents(
-            metadata=metadata_list,
-            collection_name=f"collection_{knowledge_id}",
-            documents=chunks,
-            ids=[f"{file_id}_{i}" for i in range(len(chunks))]
+            chunks = Splitter.split_documents(docs)
+
+            metadata_list = []
+            content_list = []
+            for idx, chunk in enumerate(chunks):
+                chunk.metadata.update({
+                    "knowledge_id": k_id,
+                    "file_id": f_id
+                })
+                metadata_list.append(chunk.metadata)
+                content_list.append(chunk.page_content)
+
+            # 向量入库
+            db_manager.add_documents(
+                metadatas=metadata_list,
+                collection_name=f"collection_{k_id}",
+                documents=content_list,
+                ids=[f"{f_id}_{i}" for i in range(len(content_list))]
+            )
+
+            # 数据库记录
+            KnowledgeFileDao.add(KnowledgeFile(
+                knowledge_id=k_id,
+                file_name=f_name,
+                chunks_counts=len(content_list),
+                id=f_id
+            ))
+            return len(content_list)
+
+        # 在线程池中执行耗时任务
+        chunk_count = await run_in_threadpool(
+            process_document, tmp_path, suffix, knowledge_id, file_id, file.filename
         )
-
-        # 将文件信息存入数据库
-        KnowledgeFileDao.add(KnowledgeFile(
-            knowledge_id=knowledge_id,
-            file_name=file.filename,
-            chunks_counts=len(chunks),
-            id=file_id
-        ))
 
         return resp_200(data={
             "msg": "Document indexed successfully",
             "file_id": file_id,
-            "chunk_count": len(chunks)
+            "chunk_count": chunk_count
         })
 
+    except Exception as e:
+        # 记录日志 log.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     finally:
-        # 6. 临时文件兜底清理
-        if tmp_file and os.path.exists(tmp_file.name):
-            os.remove(tmp_file.name)
+        # 4. 彻底清理临时文件
+        await file.close()  # 异步关闭上传的文件句柄
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception as e:
+                print(f"Failed to delete tmp file: {e}")
 
 
 @router.get("/file_list")
@@ -95,7 +121,7 @@ async def get_file_list(knowledge_id: str = None, page_num: int = 10, page_size:
 @router.get("/get_file_chunks")
 async def get_file_chunks(file_id: str, knowledge_id: str):
     try:
-        results = chromadb_client.get_by_file_id_and_knowledge_id(
+        results = db_manager.get_by_file_id_and_knowledge_id(
             file_id=file_id, knowledge_id=knowledge_id
         )
     except Exception as e:
@@ -118,7 +144,7 @@ async def delete_file(file_id: str, knowledge_id: str):
 
     try:
         # 2. 从 ChromaDB 删除向量
-        chromadb_client.delete_by_file_id(
+        db_manager.delete_by_file_id(
             knowledge_id=knowledge_id,
             file_id=file_id
         )

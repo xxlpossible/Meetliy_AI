@@ -54,6 +54,15 @@ class Settings(BaseSettings):
         all_config = self.get_all_config()
         return all_config.get('rerank', {})
 
+    def get_qwen_config(self):
+        all_config = self.get_all_config()
+        return all_config.get('qwen', {})
+
+    def get_embeddings_config(self):
+        all_config = self.get_all_config()
+        return all_config.get('embeddings', {})
+
+
 class ConfigNotFoundError(Exception):
     pass
 

@@ -45,6 +45,7 @@ unstructured = {extras = ["xlsx"], version = "^0.21.5"}
 openpyxl = "^3.1.5"
 setuptools = "^80.10.2"
 pywin32 = "^311"
+ipython = "^9.13.0"
 
 [[tool.poetry.source]]
 name = "pytorch_cu121"

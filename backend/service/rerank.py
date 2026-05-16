@@ -32,7 +32,8 @@ class RerankService:
             "model": self.model,
             "query": question,
             "documents": flat_docs,
-            "top_n": top_k
+            "top_n": top_k,
+            "return_documents": True
         }
 
         headers = {
@@ -46,11 +47,11 @@ class RerankService:
 
             data = r.json()
 
-        reranked_results = data.get("results", [])
+        rerank_results = data.get("results", [])
         # 按相关性得分降序排序（虽然 API 通常已排序，但显式处理更安全）
-        reranked_results.sort(key=lambda x: x['relevance_score'], reverse=True)
+        rerank_results.sort(key=lambda x: x['relevance_score'], reverse=True)
 
-        return [item["document"] for item in reranked_results[:top_k]]
+        return [item["document"] for item in rerank_results[:top_k]]
 
 
 rerank = RerankService()

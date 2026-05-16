@@ -6,8 +6,9 @@ from database.models.chatmessage import ChatMessageDao, ChatMessage
 from database.schemas.schema import UserQA, ChatMessageQuery, ChatMessageAdd, ChatMessageUpdate, UserTempQA
 from service.llm_service import llm_service
 from service.rerank import rerank
-from utils.chroma_db import chromadb_client
 from fastapi.responses import StreamingResponse
+
+from utils.siliconflow_embedding import db_manager
 
 router = APIRouter(prefix='/chat', tags=['chat'])
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix='/chat', tags=['chat'])
 async def user_qa(body: UserQA):
     task_id = body.task_id
     question = body.question
-    collection_id = f"collection_{task_id}"
+    collection_name = f"collection_{task_id}"
     # TODO 后续可改为WebSocket接口 使用LangChain的ChatMessageHistory来管理记忆
     history = body.history
 
@@ -24,8 +25,8 @@ async def user_qa(body: UserQA):
         """生成流式响应"""
         try:
             # 进行初步检索
-            search_result = chromadb_client.query(
-                collection_name=collection_id,
+            search_result = db_manager.search(
+                collection_name=collection_name,
                 query_text=question,
                 n_results=40
             )
@@ -73,7 +74,7 @@ async def get_chat_message_list(body: ChatMessageQuery):
         page_size=body.page_size,
         page_num=body.page_num
     )
-    data={
+    data = {
         "items": chat_messages,
         "total": total
     }

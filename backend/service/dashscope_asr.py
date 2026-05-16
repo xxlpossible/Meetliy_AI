@@ -41,6 +41,7 @@ class DashScopeASRService:
         :return: 识别结果 dict
         """
         # Step 1. 提交任务
+        logger.info("语音转译开始！")
         task_response = Transcription.async_call(
             model=model,
             file_urls=file_urls,
@@ -62,19 +63,19 @@ class DashScopeASRService:
             )
 
 
-if __name__ == "__main__":
-    # 示例使用
-    service = DashScopeASRService()
-    url = TmpFilesUploader.upload_from_url(
-        file_url="http://127.0.0.1:9001/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL29yaWdpbmFsLWF1ZGlvL2F1ZGlvLTAud2F2P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9WjdIUEVFQlowOEdPQ0RCRVNIVlIlMkYyMDI1MTEwOSUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTExMDlUMDc0ODI3WiZYLUFtei1FeHBpcmVzPTQzMjAwJlgtQW16LVNlY3VyaXR5LVRva2VuPWV5SmhiR2NpT2lKSVV6VXhNaUlzSW5SNWNDSTZJa3BYVkNKOS5leUpoWTJObGMzTkxaWGtpT2lKYU4waFFSVVZDV2pBNFIwOURSRUpGVTBoV1VpSXNJbVY0Y0NJNk1UYzJNamN4TVRZek9Td2ljR0Z5Wlc1MElqb2liV2x1YVc5aFpHMXBiaUo5LkZFZlhqd0hfOWR2NG9Fd3czTldIMFAtQk5RbUVrZEcxVm5TWWJUd1ZFT1lZRVE5UHp0ZkIweXMtNEx2VnRENFJZbGR5TTZyb1VhLWVTa2FlTzJfTjd3JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZ2ZXJzaW9uSWQ9bnVsbCZYLUFtei1TaWduYXR1cmU9ZjJmMDc0YmQyMzIxNmQ2NDgxNWJhZTA4NWQ5YTA0ZWZmZGIwOTVjNDM3ZDk4ZmE5MzhiZTczMmVhOWMxNGE4Yw"
-    )
-
-    result = service.transcribe(
-        file_urls=[
-            "http://tmpfiles.org/dl/7623294/temp_audio_file.wav"
-        ],
-        language_hints=["zh", "en"],
-        diarization_enabled=True,
-    )
-
-    print(json.dumps(result, indent=4, ensure_ascii=False))
+# if __name__ == "__main__":
+#     # 示例使用
+#     service = DashScopeASRService()
+#     url = TmpFilesUploader.upload_from_url(
+#         file_url="http://127.0.0.1:9001/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL29yaWdpbmFsLWF1ZGlvL2F1ZGlvLTAud2F2P1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9WjdIUEVFQlowOEdPQ0RCRVNIVlIlMkYyMDI1MTEwOSUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNTExMDlUMDc0ODI3WiZYLUFtei1FeHBpcmVzPTQzMjAwJlgtQW16LVNlY3VyaXR5LVRva2VuPWV5SmhiR2NpT2lKSVV6VXhNaUlzSW5SNWNDSTZJa3BYVkNKOS5leUpoWTJObGMzTkxaWGtpT2lKYU4waFFSVVZDV2pBNFIwOURSRUpGVTBoV1VpSXNJbVY0Y0NJNk1UYzJNamN4TVRZek9Td2ljR0Z5Wlc1MElqb2liV2x1YVc5aFpHMXBiaUo5LkZFZlhqd0hfOWR2NG9Fd3czTldIMFAtQk5RbUVrZEcxVm5TWWJUd1ZFT1lZRVE5UHp0ZkIweXMtNEx2VnRENFJZbGR5TTZyb1VhLWVTa2FlTzJfTjd3JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZ2ZXJzaW9uSWQ9bnVsbCZYLUFtei1TaWduYXR1cmU9ZjJmMDc0YmQyMzIxNmQ2NDgxNWJhZTA4NWQ5YTA0ZWZmZGIwOTVjNDM3ZDk4ZmE5MzhiZTczMmVhOWMxNGE4Yw"
+#     )
+#
+#     result = service.transcribe(
+#         file_urls=[
+#             "http://tmpfiles.org/dl/7623294/temp_audio_file.wav"
+#         ],
+#         language_hints=["zh", "en"],
+#         diarization_enabled=True,
+#     )
+#
+#     print(json.dumps(result, indent=4, ensure_ascii=False))

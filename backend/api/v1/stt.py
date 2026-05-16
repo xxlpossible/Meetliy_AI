@@ -1,4 +1,9 @@
 import asyncio
+import os
+
+import aiofiles
+from loguru import logger
+import tempfile
 import uuid
 from typing import Optional, List
 
@@ -11,8 +16,9 @@ from database.schemas.schema import TranscriptionQueryVo, TransUpdate
 from service.audio_transcription import audio_service
 from service.realtime_asr import WebSocketCallback
 from task.tasks import transcription
-from utils.minio_client import minio_client
 from fastapi import WebSocket, WebSocketDisconnect
+
+from utils.uploader import TmpFilesUploader
 
 router = APIRouter(prefix='/audio', tags=['audio'])
 
@@ -46,29 +52,71 @@ async def audio_transcription(
 @router.post('/start_task', description="上传语音文件")
 async def upload_file(
         audio_file: UploadFile = File(...),
-        task_name: Optional[str] = Form(None),
-        task_id: Optional[str] = Form(None),
-        real_time_asr_text: Optional[str] = Form(None)
+        task_name: Optional[str] = Form(None)
 ):
-    # 文件统一采用mp3格式
-    file_bytes = await audio_file.read()
-    minio_client.upload_bytes(audio_file.filename, file_bytes, audio_file.content_type)
-    # 取得文件的url地址
-    original_url = minio_client.get_presigned_url(
-        bucket_name="original-audio",
-        object_name=audio_file.filename
-    )
-    # 创建任务对象
-    t_id = uuid.uuid4().hex
-    TranscriptionDao.add(Transcription(
-        id=t_id,
-        task_name=task_name,
-        status=Status.PENDING.value,
-        task_result=None,
-        is_delete=Delete.NOT.value
-    ))
-    transcription.delay(original_url, t_id)
-    return resp_200(data=t_id, message="添加成功")
+    # 将音频文件传入MinIO进行备份，然后获取其url地址
+    # 因为已经使用了阿里云OSS的Buket服务，所以注释这一步操作
+
+    # 语音文件统一采用mp3格式
+    # file_bytes = await audio_file.read()
+    # minio_client.upload_bytes(audio_file.filename, file_bytes, audio_file.content_type)
+    # original_url = minio_client.get_presigned_url(
+    #     bucket_name="original-audio",
+    #     object_name=audio_file.filename
+    # )
+
+    # 获取原始文件扩展名（如 .mp3 / .wav）
+    file_ext = os.path.splitext(audio_file.filename)[1] or ".mp3"
+
+    # 生成唯一临时文件名
+    temp_filename = f"{uuid.uuid4().hex}{file_ext}"
+
+    # 创建完整临时文件路径
+    tmp_path = os.path.join(tempfile.gettempdir(), temp_filename)
+
+    logger.info(f"⬇️ 接口调用成功，开始接收上传语音文件: {audio_file.filename}")
+    logger.info(f"📁 临时文件路径: {tmp_path}")
+
+    try:
+        # Step 1. 异步写入临时文件
+        async with aiofiles.open(tmp_path, "wb") as f:
+            while chunk := await audio_file.read(8192):
+                await f.write(chunk)
+
+        logger.info(f"✅ 文件已保存到临时路径: {tmp_path}")
+
+        # Step 2. 根据临时文件的保存路径 获取公网的文件地址 public_url
+        # TODO 这里获取到公网的文件下载地址其实是非常耗时的，可以将此操作放到线程池当中完成，避免阻塞主线程
+        # TODO 从获取公网下载地址 到下面的数据库读写操作其实都是同步操作，不应该出现在异步的接口当中，都需要放入线程池
+        public_url = TmpFilesUploader.upload_from_temp_path(temp_path=tmp_path)
+
+        # 创建任务对象
+        t_id = uuid.uuid4().hex
+        TranscriptionDao.add(Transcription(
+            id=t_id,
+            task_name=task_name,
+            status=Status.PENDING.value,
+            task_result=None,
+            is_delete=Delete.NOT.value
+        ))
+
+        # Step 3. 将公网的地址传入工作流 交给AI执行任务
+        transcription.delay(public_url, t_id)
+        return resp_200(data=t_id, message="添加成功")
+
+    except Exception as e:
+        logger.exception("❌ 文件上传处理失败")
+        return {
+            "success": False,
+            "message": str(e),
+        }
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                logger.info(f"🧹 已删除临时文件: {tmp_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ 删除临时文件失败: {e}")
 
 
 @router.post('/list', description="获取结果列表")

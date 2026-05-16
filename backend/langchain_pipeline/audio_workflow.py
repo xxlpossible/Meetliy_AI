@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Tuple
 from langchain_core.runnables import RunnableLambda
 
 from service.dashscope_asr import DashScopeASRService
-from service.noise_reduce_service import NoiseReductionService
+from service.noise_reduce import NoiseReductionService
 from utils.formatter import Formatter
 from utils.uploader import TmpFilesUploader
 

@@ -10,13 +10,21 @@ from utils.oss import oss_client
 
 class TmpFilesUploader:
     """
-    tmpfiles.org 文件上传工具类
-    用于将局域网或私有URL下载的文件上传到 tmpfiles.org，并返回公网可访问的下载链接。
-    上传完成后自动清理临时文件。
+    将文件上传到阿里云OSS
     """
 
     TMP_FILENAME = "temp_audio_file.mp3"
-    API_URL = "https://tmpfiles.org/api/v1/upload"
+
+    @staticmethod
+    def upload_from_temp_path(temp_path: str):
+        logger.info("⬆️ 正在上传到OSS ...")
+        file_id = uuid.uuid4().hex
+        # 将文件上传到 OSS
+        oss_client.upload_file(key=f"audio/{file_id}.mp3", file_path=temp_path)
+        # 生成临时下载链接
+        download_url = oss_client.generate_presigned_url(key=f"audio/{file_id}.mp3")
+        logger.info("✅ 上传成功！")
+        return download_url
 
     @staticmethod
     def upload_from_url(file_url: str) -> str:

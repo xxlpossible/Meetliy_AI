@@ -156,18 +156,18 @@ class ChromaDBClient:
 # 单例实例（方便在项目中直接导入使用）
 chromadb_client = ChromaDBClient()
 
-if __name__ == "__main__":
-    chromadb_client.get_or_create_collection(name="meeting_notes")
-    # 添加数据
-    docs = [
-        "今天我们讨论了项目上线的准备工作。",
-        "开发团队已经完成了功能测试。",
-        "市场部建议推迟两周发布以优化宣传策略。"
-    ]
-    chromadb_client.add_documents("meeting_notes", documents=docs)
-
-    # 查询数据
-    query = "会议的重点是什么？"
-    result = chromadb_client.query("meeting_notes", query_text=query)
-    print(result)
+# if __name__ == "__main__":
+#     chromadb_client.get_or_create_collection(name="meeting_notes")
+#     # 添加数据
+#     docs = [
+#         "今天我们讨论了项目上线的准备工作。",
+#         "开发团队已经完成了功能测试。",
+#         "市场部建议推迟两周发布以优化宣传策略。"
+#     ]
+#     chromadb_client.add_documents("meeting_notes", documents=docs)
+#
+#     # 查询数据
+#     query = "会议的重点是什么？"
+#     result = chromadb_client.query("meeting_notes", query_text=query)
+#     print(result)
 

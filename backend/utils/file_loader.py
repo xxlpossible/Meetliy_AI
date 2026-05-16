@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import win32com.client as win32
 
+
 class FileLoader:
     def load_document(self, file_path: str, file_type: str):
         loader = None
@@ -18,7 +19,7 @@ class FileLoader:
         elif file_type == "docx":
             loader = Docx2txtLoader(file_path)
         elif file_type in ["xls", "xlsx"]:
-            docs = self.excel_to_structured_chunks(file_path)
+            docs = self._excel_to_structured_chunks(file_path)
         # --- 新增 Markdown 支持 ---
         elif file_type == "md":
             loader = TextLoader(file_path, encoding='utf-8')
@@ -28,7 +29,7 @@ class FileLoader:
         documents = loader.load() if docs is None else docs
         return documents
 
-    def excel_to_structured_chunks(self, file_path):
+    def _excel_to_structured_chunks(self, file_path):
         # 读取 Excel
         df = pd.read_excel(file_path)
         df = df.fillna("")  # 处理空值

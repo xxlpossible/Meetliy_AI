@@ -11,6 +11,11 @@ from settings import settings
 
 
 class AudioTranscriptionService:
+    """
+    这个类的作用是：调用之前公司的语音转文字的模型进行语音转写
+    但是其实根本用不上
+    这个项目里已经用了阿里的语音文件转文字模型 和 实时语音转文字模型了
+    """
     def __init__(self):
         self.stt_config = settings.get_transcription_config()
         self.api_url = self.stt_config.get('base_url')
