@@ -14,9 +14,6 @@ from utils.splitter import Splitter
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
 
-TEMP_DIR = "data/tmp"
-os.makedirs(TEMP_DIR, exist_ok=True)
-
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(default=None)):

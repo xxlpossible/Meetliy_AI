@@ -3,7 +3,6 @@ from loguru import logger
 
 from database.models.transcription import TranscriptionDao, Status
 from langchain_pipeline.agent import MeetingAgent
-from utils.chroma_db import chromadb_client
 from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
 from .celery_app import celery_app
@@ -41,7 +40,7 @@ def transcription(
         if result.get('status') == 'complete':
             # 将识别结果转换为向量 并创建集合 存入向量数据库
             collection_name = f"collection_{t_id}"
-            chromadb_client.get_or_create_collection(name=collection_name)
+            db_manager.get_or_create_collection(name=collection_name)
             logger.info(f"集合创建成功，集合名称：{collection_name}")
             # 结果向量化
             complete_text = result.get('complete_text', "")

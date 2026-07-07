@@ -8,7 +8,7 @@ import operator
 from loguru import logger
 from langgraph.graph import StateGraph, START, END
 
-from service.dashscope_asr import DashScopeASRService
+from service.dashscope_file_asr import DashScopeASRService
 from settings import settings
 from utils.formatter import Formatter
 
@@ -224,6 +224,7 @@ class MeetingAgent:
     # =========================
     # Graph 构建
     # =========================
+    # TODO 这里没有给Graph添加Checkpointer 也没有后端持久化聊天记录的逻辑 目前持久化的逻辑是前端拼接所有聊天记录 然后传递到后端进行保存
     def _build_graph(self):
         builder = StateGraph(MessagesState)
 

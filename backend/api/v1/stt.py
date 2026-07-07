@@ -13,7 +13,6 @@ from fastapi import APIRouter, HTTPException, Body, Response, UploadFile, File, 
 from api.schemas import resp_200
 from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
 from database.schemas.schema import TranscriptionQueryVo, TransUpdate
-from service.audio_transcription import audio_service
 from service.realtime_asr import WebSocketCallback
 from task.tasks import transcription
 from fastapi import WebSocket, WebSocketDisconnect
@@ -21,32 +20,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from utils.uploader import TmpFilesUploader
 
 router = APIRouter(prefix='/audio', tags=['audio'])
-
-
-@router.post('/transcription', description="音频转文字")
-async def audio_transcription(
-        file_path: str = Body(..., embed=True, description="需要转换为文本的语音")
-):
-    """
-    音频转文字接口
-    - file_path: 音频文件路径或URL
-    """
-    try:
-        # 调用服务层处理业务逻辑
-        transcription_result = await audio_service.transcribe_audio(file_path)
-
-        # 返回响应
-        return Response(
-            content=transcription_result,
-            media_type="text/plain"
-        )
-
-    except HTTPException:
-        # 重新抛出HTTP异常
-        raise
-    except Exception as e:
-        # 处理其他未预期异常
-        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
 
 
 @router.post('/start_task', description="上传语音文件")
