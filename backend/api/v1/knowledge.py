@@ -1,17 +1,17 @@
 import os
 import tempfile
 import uuid
-
+from loguru import logger
 import aiofiles
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from starlette.concurrency import run_in_threadpool
 
 from api.schemas import resp_200
-from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile
+from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, KnowledgeType
 from utils.file_loader import FileLoader
 from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
-from utils.markitdown_converter import get_supported_extensions
+from utils.markitdown_converter import get_supported_extensions, get_knowledge_type
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
 
@@ -44,19 +44,25 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
         # 3. 将同步耗时操作放入线程池执行，避免阻塞主线程
         # 包装一个内部函数来处理后续逻辑
         def process_document(path, sfx, k_id, f_id, f_name):
+            # 判断知识类型：0文本 1语音 2图片
+            ktype = get_knowledge_type(f".{sfx}")
+
             loader = FileLoader()
             docs = loader.load_document(file_path=path, file_type=sfx)
 
-            # 使用 Markdown 结构化分块（MarkItDown 转换后的文档为 Markdown 格式，
-            # 按标题/段落/列表等结构边界切分，保留语义完整性）
-            chunks = Splitter.split_markdown_documents(docs)
+            # 语音转录为纯文本，用通用递归分块；文本/图片（OCR 可能含 Markdown 表格）用 MD 分块
+            if ktype == KnowledgeType.AUDIO.value:
+                chunks = Splitter.split_documents(docs)
+            else:
+                chunks = Splitter.split_markdown_documents(docs)
 
             metadata_list = []
             content_list = []
             for idx, chunk in enumerate(chunks):
                 chunk.metadata.update({
                     "knowledge_id": k_id,
-                    "file_id": f_id
+                    "file_id": f_id,
+                    "type": ktype,  # 知识类型写入 metadata，方便向量库查询过滤
                 })
                 metadata_list.append(chunk.metadata)
                 content_list.append(chunk.page_content)
@@ -69,11 +75,12 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
                 ids=[f"{f_id}_{i}" for i in range(len(content_list))]
             )
 
-            # 数据库记录
+            # 数据库记录（带知识类型）
             KnowledgeFileDao.add(KnowledgeFile(
                 knowledge_id=k_id,
                 file_name=f_name,
                 chunks_counts=len(content_list),
+                type=ktype,
                 id=f_id
             ))
             return len(content_list)
@@ -99,8 +106,9 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
+                logger.info(f"临时文件已被删除：{tmp_path}")
             except Exception as e:
-                print(f"Failed to delete tmp file: {e}")
+                logger.error(f"Failed to delete tmp file: {e}")
 
 
 @router.get("/file_list")

@@ -10,10 +10,18 @@ from sqlalchemy import select, and_
 from sqlalchemy.sql import func
 
 
+class KnowledgeType(IntEnum):
+    """知识类型：0文本 1语音 2图片"""
+    TEXT = 0
+    AUDIO = 1
+    IMAGE = 2
+
+
 class KnowledgeFileBase(SQLModel):
     file_name: Optional[str] = Field(default=None, description="文件名")
     knowledge_id: Optional[str] = Field(default=None, description="知识库ID")
     chunks_counts: Optional[int] = Field(default=0, description="文档片段数量")
+    type: Optional[int] = Field(default=KnowledgeType.TEXT.value, description="知识类型 0文本 1语音 2图片")
     user_id: Optional[int] = Field(default=0)
     del_flag: Optional[int] = Field(default=0, description="删除标识 0默认 -1被删除")
     create_time: Optional[datetime] = Field(sa_column=Column(

@@ -58,6 +58,34 @@ _TEXT_FALLBACK_EXTENSIONS: Set[str] = {
     ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties", ".log", ".rst",
 }
 
+# 音频扩展名（走硅基流动 SenseVoiceSmall 转录，不走 MarkItDown）
+AUDIO_EXTENSIONS: Set[str] = {".mp3", ".wav", ".m4a", ".flac"}
+
+# 图片扩展名（走硅基流动 PaddleOCR-VL-1.5 OCR，不走 MarkItDown）
+IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
+
+
+def get_knowledge_type(file_path_or_ext: str) -> int:
+    """
+    根据文件扩展名判断知识类型：
+        0 = 文本（走 MarkItDown 解析）
+        1 = 语音（走硅基流动 SenseVoiceSmall 转录）
+        2 = 图片（走硅基流动 PaddleOCR-VL-1.5 OCR）
+
+    :param file_path_or_ext: 文件路径或扩展名（含点，如 ".mp3" 或 "a.mp3"）
+    :return: 0 / 1 / 2
+    """
+    ext = (os.path.splitext(file_path_or_ext)[1] or "").lower()
+    # 兼容直接传 ".mp3" 的情况
+    if not ext and file_path_or_ext.startswith("."):
+        ext = file_path_or_ext.lower()
+    if ext in AUDIO_EXTENSIONS:
+        return 1
+    if ext in IMAGE_EXTENSIONS:
+        return 2
+    return 0
+
+
 # ==========================================
 # MarkItDown 单例管理
 # ==========================================
