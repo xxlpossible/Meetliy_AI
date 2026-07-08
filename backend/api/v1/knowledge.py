@@ -11,27 +11,27 @@ from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile
 from utils.file_loader import FileLoader
 from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
+from utils.markitdown_converter import get_supported_extensions
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
+
+# 支持的文件类型白名单（扩展名不含点），从 markitdown_converter 动态获取，保持单一数据源
+SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
 
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(default=None)):
     suffix = file.filename.split(".")[-1].lower()
-    if suffix not in ["pdf", "doc", "docx", "xls", "xlsx"]:
-        raise HTTPException(status_code=400, detail="Unsupported file type")
+    if suffix not in SUPPORTED_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: .{suffix}，支持 PDF/Word/Excel/PPT/图片/音频/文本/代码 等格式"
+        )
 
     tmp_path = None
     file_id = uuid.uuid4().hex
 
     try:
-        # 1. 创建 Python 原生临时文件
-        # 这里用的是同步的方法
-        # tmp_file = tempfile.NamedTemporaryFile(suffix=f".{suffix}", delete=False)
-        # tmp_file.write(await file.read())
-        # tmp_file.flush()
-        # tmp_file.close()
-
         # 1. 异步创建临时文件路径
         fd, tmp_path = tempfile.mkstemp(suffix=f".{suffix}")
         os.close(fd)  # 关闭 mkstemp 返回的句柄，后面用 aiofiles 打开
@@ -47,7 +47,9 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
             loader = FileLoader()
             docs = loader.load_document(file_path=path, file_type=sfx)
 
-            chunks = Splitter.split_documents(docs)
+            # 使用 Markdown 结构化分块（MarkItDown 转换后的文档为 Markdown 格式，
+            # 按标题/段落/列表等结构边界切分，保留语义完整性）
+            chunks = Splitter.split_markdown_documents(docs)
 
             metadata_list = []
             content_list = []

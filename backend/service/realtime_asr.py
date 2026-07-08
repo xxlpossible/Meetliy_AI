@@ -2,9 +2,11 @@ from fastapi import WebSocket
 import dashscope
 from dashscope.audio.asr import TranslationRecognizerCallback, TranscriptionResult, TranslationResult, RecognitionResult
 import asyncio
+from settings import settings
 
-# 设置 API Key
-dashscope.api_key = "sk-0e8a5b51bbc34dc6afc3f45041640341"
+# 设置APIKEY
+dashscope_config = settings.get_dashscope_config()
+dashscope.api_key = dashscope_config.get("api_key")
 
 
 class WebSocketCallback(TranslationRecognizerCallback):

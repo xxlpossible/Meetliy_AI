@@ -1,41 +1,52 @@
 # database/check_points.py
-import os
 from pathlib import Path
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 
 
 class CheckpointerManager:
-    _sqlite_cm = None
+    """
+    基于 AsyncSqliteSaver 的异步 checkpointer 管理器。
+
+    LangGraph 的 async astream / ainvoke 要求 checkpointer 实现异步方法
+    (aget_tuple / aput / aput_writes / alist)，同步 SqliteSaver 不满足
+    （调用 astream 会抛 NotImplementedError），因此统一改用 AsyncSqliteSaver
+    （依赖 aiosqlite）。
+
+    生命周期：init() / close() 应在 FastAPI lifespan 中 await 调用；
+    get_checkpointer() 在未初始化时会自动惰性初始化作为兜底。
+    """
+    _async_cm = None
     _checkpointer = None
 
     @classmethod
-    def init(cls):
-        if cls._checkpointer is None:
-            # Path(__file__) 获取当前文件 check_points.py 的路径
-            # .parent 是 database/ 目录
-            # .parent.parent 是 backend/ 目录（即上一级）
-            base_dir = Path(__file__).parent.parent
-            db_path = base_dir / "checkpoints.db"
-            # 确保转换为字符串路径，并使用绝对路径以防万一
-            db_path_str = str(db_path.absolute())
-            cls._sqlite_cm = SqliteSaver.from_conn_string(db_path_str)
-            # SqliteSaver.from_conn_string 返回的是一个上下文管理器
-            cls._checkpointer = cls._sqlite_cm.__enter__()
-            logger.info(f"SqliteSaver 初始化完成: {db_path_str}")
+    async def init(cls):
+        if cls._checkpointer is not None:
+            return
+        # Path(__file__) 获取当前文件 check_points.py 的路径
+        # .parent 是 database/ 目录
+        # .parent.parent 是 backend/ 目录（即上一级）
+        base_dir = Path(__file__).parent.parent
+        db_path = base_dir / "checkpoints.db"
+        # 确保转换为字符串路径，并使用绝对路径以防万一
+        db_path_str = str(db_path.absolute())
+        # AsyncSqliteSaver.from_conn_string 返回一个异步上下文管理器
+        cls._async_cm = AsyncSqliteSaver.from_conn_string(db_path_str)
+        cls._checkpointer = await cls._async_cm.__aenter__()
+        logger.info(f"AsyncSqliteSaver 初始化完成: {db_path_str}")
 
     @classmethod
-    def get_checkpointer(cls):
+    async def get_checkpointer(cls):
         if cls._checkpointer is None:
-            logger.info("FastAPI未初始化SQL-lite，已自动初始化")
-            cls.init()
+            logger.info("AsyncSqliteSaver 尚未初始化，已自动初始化")
+            await cls.init()
         return cls._checkpointer
 
     @classmethod
-    def close(cls):
-        if cls._sqlite_cm:
-            cls._sqlite_cm.__exit__(None, None, None)
-            cls._sqlite_cm = None
+    async def close(cls):
+        if cls._async_cm is not None:
+            await cls._async_cm.__aexit__(None, None, None)
+            cls._async_cm = None
             cls._checkpointer = None
-            logger.info("SqliteSaver 已关闭")
+            logger.info("AsyncSqliteSaver 已关闭")

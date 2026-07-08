@@ -3,3 +3,5 @@
 *.lock
 /test
 .venv
+../.workbuddy
+../overview.md

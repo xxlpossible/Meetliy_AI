@@ -8,6 +8,7 @@ from database.models.chatmessage import ChatMessageDao, ChatMessage
 from database.schemas.schema import UserQA, ChatMessageQuery, ChatMessageAdd, ChatMessageUpdate, UserTempQA
 from service.llm_service import llm_service
 from service.rerank import rerank
+from service.llm_graph_service import stream_chat_answer
 from fastapi.responses import StreamingResponse
 from fastapi import WebSocket, WebSocketDisconnect, Query
 from loguru import logger
@@ -21,7 +22,6 @@ async def user_qa(body: UserQA):
     task_id = body.task_id
     question = body.question
     collection_name = f"collection_{task_id}"
-    # TODO 后续可改为WebSocket接口 使用LangChain的ChatMessageHistory来管理记忆
     history = body.history
 
     async def stream_response():
@@ -57,7 +57,7 @@ async def user_qa(body: UserQA):
 
 
 @router.websocket("/ws/chat")
-async def audio_to_text(
+async def chat_stream(
     websocket: WebSocket,
     task_id: str,
     token: Optional[str] = Query(None)
@@ -71,14 +71,14 @@ async def audio_to_text(
     # === 第二步：接受连接 ===
     await websocket.accept()
     client_info = f"{websocket.client.host}:{websocket.client.port}"
-    logger.info(f"🎧 WebSocket 连接已建立（客户端: {client_info}）")
+    logger.info(f"🎧 WebSocket 连接已建立（客户端: {client_info}，task_id: {task_id}）")
 
     # === 第三步：设置超时和消息循环 ===
     try:
         while True:
             try:
-                # 设置对话超时 自动断开连接
-                # TODO 这里需要判断一下 使用asyncio.wait_for进行异步函数的超时判断是否正确
+                # asyncio.wait_for 对 awaitable 进行超时控制是正确用法：
+                # 超时会抛出 asyncio.TimeoutError，捕获后主动关闭连接
                 data = await asyncio.wait_for(
                     websocket.receive_json(),
                     timeout=30
@@ -93,14 +93,23 @@ async def audio_to_text(
                 logger.info("👋 收到客户端主动关闭请求")
                 break
 
-            # === 你具体的业务逻辑===
-            # 注意：这里应是非阻塞或异步处理，避免卡住 WebSocket 循环
-            # TODO 这里需要调用 llm_graph_service.py 中的业务执行函数，接收websocket连接以及用户question后，调用大模型流式返回模型回答
-            question = data.get('text')
-            model_response_chunk = "模型流式回答的文本片段"
+            # === 业务逻辑：调用 llm_graph_service 流式回答 ===
+            # stream_chat_answer 内部完成：检索 -> 重排 -> LangGraph 流式对话，
+            # 并通过 websocket 按协议推送 start / streaming / done / error 帧
+            question = data.get('text') if isinstance(data, dict) else None
+            if not question or not str(question).strip():
+                await websocket.send_json({"status": "error", "message": "问题不能为空"})
+                continue
 
-            # 发送响应
-            await websocket.send_json({"status": "success", "text": model_response_chunk})
+            try:
+                await stream_chat_answer(websocket, str(question).strip(), task_id)
+            except WebSocketDisconnect:
+                # 客户端在生成过程中断开，向上抛出以退出循环
+                raise
+            except Exception as e:
+                logger.error(f"❌ 处理用户问题失败: {e}", exc_info=True)
+                # 单轮失败不影响后续对话，继续等待下一条消息
+                await websocket.send_json({"status": "error", "message": f"处理失败: {e}"})
 
     except WebSocketDisconnect:
         logger.info("❎ WebSocket 客户端主动断开连接")

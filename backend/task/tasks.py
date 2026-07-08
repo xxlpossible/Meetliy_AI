@@ -15,11 +15,6 @@ def transcription(
         t_id: str = None
 ):
     try:
-        # 构建完成工作流
-        # complete_workflow = CompleteWorkflow()
-        # 执行工作流 进行语音和文本处理
-        # result = complete_workflow.process(audio_url=original_url)
-
         # 取得对应任务
         task = TranscriptionDao.get_by_id(t_id=t_id)
 
@@ -46,10 +41,8 @@ def transcription(
             complete_text = result.get('complete_text', "")
             sentences = result.get('sentences', [])
 
-            # 这里使用的是手写函数
-            # chunks = chunk_text(complete_text)
-
-            # 这里使用LangChain的标点符号递归分割器
+            # 转录结果为纯文本（非 Markdown），不经过 MarkItDown 转换，
+            # 故使用通用递归分块（按标点符号切分），而非 Markdown 结构化分块
             chunks = Splitter.split_documents([Document(page_content=complete_text)])
             chunk_page_contents = [chunk.page_content for chunk in chunks]
             sentences.extend(chunk_page_contents)
@@ -59,44 +52,6 @@ def transcription(
                 collection_name=collection_name,
                 documents=sentences
             )
-            # chromadb_client.add_documents(
-            #     collection_name=collection_name,
-            #     documents=sentences
-            # )
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
 
-
-# 这个函数暂时弃用
-def chunk_text(text, max_length=200, lookahead=200):
-    """
-    按 max_length 切分文本，但在切分点只往后寻找句末标点。
-    找到标点就切，没有就按 max_length 切。
-    """
-    punctuation = set("。！？.!?；;…\n")
-    chunks = []
-    n = len(text)
-    i = 0
-
-    while i < n:
-        # 剩余不足 max_length
-        if n - i <= max_length:
-            chunks.append(text[i:].strip())
-            break
-
-        tentative = i + max_length  # 基准切分点
-        end_limit = min(n, tentative + lookahead)
-
-        cut_pos = None
-        for j in range(tentative, end_limit):
-            if text[j] in punctuation:
-                cut_pos = j + 1
-                break
-
-        # 如果找到标点就用标点，否则固定按 max_length 切
-        end = cut_pos if cut_pos else tentative
-
-        chunks.append(text[i:end].strip())
-        i = end
-
-    return chunks

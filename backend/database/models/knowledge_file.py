@@ -26,7 +26,9 @@ class KnowledgeFileBase(SQLModel):
 
 
 class KnowledgeFile(KnowledgeFileBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True, unique=True)
+    # 主键为 uuid.uuid4().hex 生成的字符串，与 knowledge_id / file_id 上下游一致
+    # 注意：声明为 str 而非 int，避免 Pydantic 序列化时类型不匹配告警
+    id: Optional[str] = Field(default=None, primary_key=True, unique=True)
 
 
 class KnowledgeFileDao:

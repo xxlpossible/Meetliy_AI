@@ -1,70 +1,81 @@
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredExcelLoader, TextLoader
-from langchain_core.documents import Document
-import pandas as pd
+"""
+文件加载器
+==========
+
+使用 MarkItDown 将任意格式文档统一转换为 Markdown 文本，
+并包装为 LangChain Document 返回，供下游 Markdown 分块器处理。
+
+改造说明（相较旧版）：
+    - 旧版使用 PyPDFLoader / Docx2txtLoader / UnstructuredExcelLoader 等多个分散的 Loader，
+      且 .doc 依赖 win32com、Excel 需自定义结构化处理。
+    - 新版统一通过 MarkItDown 转换为 Markdown，逻辑收敛到单一入口，
+      支持格式大幅扩展（PDF/Word/Excel/PPT/图片/音频/文本/代码 等），
+      且移除了对 win32com 的直接依赖（已下沉到 markitdown_converter 内部按需调用）。
+"""
+
 import os
-import win32com.client as win32
+from typing import List, Optional
+
+from langchain_core.documents import Document
+from loguru import logger
+
+from utils.markitdown_converter import convert_to_markdown, is_supported
 
 
 class FileLoader:
-    def load_document(self, file_path: str, file_type: str):
-        loader = None
-        docs = None
-        if file_type == "pdf":
-            loader = PyPDFLoader(file_path)
-        elif file_type == "doc":
-            # 先转换
-            file_path = self._convert_doc_to_docx(file_path)
-            # 转换后按 docx 处理
-            loader = Docx2txtLoader(file_path)
-        elif file_type == "docx":
-            loader = Docx2txtLoader(file_path)
-        elif file_type in ["xls", "xlsx"]:
-            docs = self._excel_to_structured_chunks(file_path)
-        # --- 新增 Markdown 支持 ---
-        elif file_type == "md":
-            loader = TextLoader(file_path, encoding='utf-8')
-        else:
-            raise ValueError("Unsupported file type")
+    """
+    统一文件加载器：任意格式 → Markdown → LangChain Document。
 
-        documents = loader.load() if docs is None else docs
-        return documents
+    使用方式：
+        loader = FileLoader()
+        docs = loader.load_document(file_path="/path/to/file.pdf", file_type="pdf")
+    """
 
-    def _excel_to_structured_chunks(self, file_path):
-        # 读取 Excel
-        df = pd.read_excel(file_path)
-        df = df.fillna("")  # 处理空值
+    def load_document(
+        self,
+        file_path: str,
+        file_type: Optional[str] = None
+    ) -> List[Document]:
+        """
+        加载文档并转换为 Markdown 形式的 LangChain Document 列表。
 
-        headers = df.columns.tolist()
-        documents = []
+        :param file_path: 文件路径
+        :param file_type: 文件类型（扩展名，不含点）；为空时从路径自动推断
+        :return: LangChain Document 列表（page_content 为 Markdown 文本）
+        :raises ValueError: 文件类型不支持或转换结果为空
+        """
+        if not file_path or not os.path.exists(file_path):
+            raise ValueError(f"文件不存在: {file_path}")
 
-        for index, row in df.iterrows():
-            # 将每一行转为： 表头1: 值1, 表头2: 值2...
-            row_context = []
-            for header in headers:
-                row_context.append(f"{header}: {row[header]}")
+        # file_type 为空时从路径推断
+        if not file_type:
+            file_type = os.path.splitext(file_path)[1].lstrip(".").lower()
 
-            content = "\n".join(row_context)
-
-            # 还可以把表名或Sheet名加入 metadata
-            doc = Document(
-                page_content=content,
-                metadata={"source": file_path, "row_index": index}
+        # 校验是否为受支持的类型
+        if not is_supported(file_path):
+            raise ValueError(
+                f"Unsupported file type: .{file_type}，"
+                f"当前支持 PDF/Word/Excel/PPT/图片/音频/文本/代码 等格式"
             )
-            documents.append(doc)
 
-        return documents
+        logger.info(f"[FileLoader] 开始加载文件: {file_path} (type={file_type})")
 
-    def _convert_doc_to_docx(self, doc_path):
-        """将 .doc 转换为 .docx"""
-        # 获取绝对路径
-        abs_path = os.path.abspath(doc_path)
-        word = win32.gencache.EnsureDispatch('Word.Application')
-        doc = word.Documents.Open(abs_path)
+        # 通过 MarkItDown 统一转换为 Markdown
+        markdown_text = convert_to_markdown(file_path)
 
-        # 构造新的文件名 .docx
-        new_path = abs_path + "x"
-        # FileFormat=16 代表 docx 格式
-        doc.SaveAs(new_path, FileFormat=16)
-        doc.Close()
-        # word.Quit() # 如果频繁处理，不要每次都 Quit，建议类初始化时创建 word 对象
-        return new_path
+        if not markdown_text or not markdown_text.strip():
+            raise ValueError(f"文件内容为空或转换失败: {file_path}")
+
+        # 包装为 LangChain Document 返回，保留来源信息
+        document = Document(
+            page_content=markdown_text,
+            metadata={
+                "source": file_path,
+                "file_type": file_type,
+            }
+        )
+
+        logger.info(
+            f"[FileLoader] 文件加载完成: {file_path} -> {len(markdown_text)} chars Markdown"
+        )
+        return [document]

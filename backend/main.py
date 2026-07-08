@@ -9,11 +9,12 @@ from database.check_points import CheckpointerManager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    CheckpointerManager.init()
+    # AsyncSqliteSaver 需在事件循环中初始化，故 init/close 均为 async 方法
+    await CheckpointerManager.init()
 
     yield
 
-    CheckpointerManager.close()
+    await CheckpointerManager.close()
 
 
 def create_app():
