@@ -8,15 +8,17 @@ import uuid
 from typing import Optional, List
 
 from dashscope.audio.asr import TranslationRecognizerRealtime
-from fastapi import APIRouter, HTTPException, Body, Response, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Body, Response, UploadFile, File, Form, Depends, Query
 
 from api.schemas import resp_200
 from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
+from database.models.user import User
 from database.schemas.schema import TranscriptionQueryVo, TransUpdate
 from service.realtime_asr import WebSocketCallback
 from task.tasks import transcription
 from fastapi import WebSocket, WebSocketDisconnect
-
+from utils.security import TOKEN_TYPE_ACCESS, decode_token
+from utils.dependencies import get_current_user
 from utils.uploader import TmpFilesUploader
 
 router = APIRouter(prefix='/audio', tags=['audio'])
@@ -25,19 +27,9 @@ router = APIRouter(prefix='/audio', tags=['audio'])
 @router.post('/start_task', description="上传语音文件")
 async def upload_file(
         audio_file: UploadFile = File(...),
-        task_name: Optional[str] = Form(None)
+        task_name: Optional[str] = Form(None),
+        current_user: User = Depends(get_current_user)
 ):
-    # 将音频文件传入MinIO进行备份，然后获取其url地址
-    # 因为已经使用了阿里云OSS的Buket服务，所以注释这一步操作
-
-    # 语音文件统一采用mp3格式
-    # file_bytes = await audio_file.read()
-    # minio_client.upload_bytes(audio_file.filename, file_bytes, audio_file.content_type)
-    # original_url = minio_client.get_presigned_url(
-    #     bucket_name="original-audio",
-    #     object_name=audio_file.filename
-    # )
-
     # 获取原始文件扩展名（如 .mp3 / .wav）
     file_ext = os.path.splitext(audio_file.filename)[1] or ".mp3"
 
@@ -94,14 +86,18 @@ async def upload_file(
 
 @router.post('/list', description="获取结果列表")
 async def get_list(
-        body: TranscriptionQueryVo
+        body: TranscriptionQueryVo,
+        current_user: User = Depends(get_current_user)
 ):
     results, total = TranscriptionDao.list(body=body)
     return resp_200(data={"data": results, "total": total})
 
 
 @router.delete('/delete', description="删除指定的记录")
-async def delete(task_id: str):
+async def delete(
+        task_id: str,
+        current_user: User = Depends(get_current_user)
+):
     try:
         TranscriptionDao.delete(task_id=task_id)
     except Exception:
@@ -110,7 +106,10 @@ async def delete(task_id: str):
 
 
 @router.post('/update', description="更新记录")
-async def update(body: TransUpdate):
+async def update(
+        body: TransUpdate,
+        current_user: User = Depends(get_current_user)
+):
     task_id = body.task_id
     task = TranscriptionDao.get_by_id(t_id=task_id)
     if task is None:
@@ -122,8 +121,9 @@ async def update(body: TransUpdate):
 
 
 @router.post("/getTask/status", summary="获取项目审核书任务状态", description="获取项目审核书任务状态")
-def get_audio2text_task_status(
-        task_ids: List[str] = Body(..., embed=True, description="需要转换为语音的文本")
+async def get_audio2text_task_status(
+        task_ids: List[str] = Body(..., embed=True, description="需要转换为语音的文本"),
+        current_user: User = Depends(get_current_user)
 ):
     result = []
     for t_id in task_ids:
@@ -140,7 +140,24 @@ def get_audio2text_task_status(
 
 
 @router.websocket("/ws/realtime")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+        websocket: WebSocket,
+        token: Optional[str] = Query(None)
+):
+    # WebSocket 无法返回标准 401，采用自定义关闭码 4401 表示认证失败
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=4401)
+        logger.warning("🔒 WebSocket 连接因未提供 Token 被拒绝")
+        return
+    try:
+        decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+    except HTTPException:
+        await websocket.accept()
+        await websocket.close(code=4401)
+        logger.warning("🔒 WebSocket 连接因 Token 无效或过期被拒绝")
+        return
+
     await websocket.accept()
 
     # 获取当前事件循环，用于在回调中调度任务

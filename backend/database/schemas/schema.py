@@ -1,5 +1,7 @@
 from typing import Optional, List
 
+import re
+from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
 
@@ -46,13 +48,57 @@ class TransUpdate(SQLModel):
 
 # 登录注册时接收的字段
 class UserLogin(SQLModel):
-    username: Optional[str]
-    password: Optional[str]
+    username: Optional[str] = Field(default=None, description="用户名")
+    password: Optional[str] = Field(default=None, description="密码")
+
+    @field_validator("username", "password")
+    @classmethod
+    def not_blank(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("用户名和密码不能为空")
+        return v
 
 
 class UserRegister(SQLModel):
-    username: Optional[str] = None
-    password: Optional[str] = None
-    confirmPassword: Optional[str]
+    username: Optional[str] = Field(default=None, description="用户名")
+    password: Optional[str] = Field(default=None, description="密码")
+    confirmPassword: Optional[str] = Field(default=None, description="确认密码")
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("用户名不能为空")
+        v = str(v).strip()
+        # 3-20 位，字母/数字/下划线，必须以字母开头
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]{2,19}$", v):
+            raise ValueError("用户名需 3-20 位，以字母开头，仅含字母、数字、下划线")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("密码不能为空")
+        v = str(v)
+        # 6-20 位，必须同时包含字母和数字
+        if len(v) < 6 or len(v) > 20:
+            raise ValueError("密码长度需为 6-20 位")
+        if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+            raise ValueError("密码必须同时包含字母和数字")
+        return v
+
+    @field_validator("confirmPassword")
+    @classmethod
+    def confirm_not_blank(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("确认密码不能为空")
+        return v
+
+
+class RefreshTokenRequest(SQLModel):
+    """Token 刷新请求体"""
+    refresh_token: str = Field(description="登录时签发的 Refresh Token")
+
 
 

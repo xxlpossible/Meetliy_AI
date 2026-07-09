@@ -2,9 +2,10 @@ import json
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from api.schemas import resp_200
 from database.models.chatmessage import ChatMessageDao, ChatMessage
+from database.models.user import User
 from database.schemas.schema import UserQA, ChatMessageQuery, ChatMessageAdd, ChatMessageUpdate, UserTempQA
 from service.llm_service import llm_service
 from service.rerank import rerank
@@ -12,13 +13,15 @@ from service.llm_graph_service import stream_chat_answer
 from fastapi.responses import StreamingResponse
 from fastapi import WebSocket, WebSocketDisconnect, Query
 from loguru import logger
+from utils.dependencies import get_current_user
+from utils.security import TOKEN_TYPE_ACCESS, decode_token
 from utils.siliconflow_embedding import db_manager
 import asyncio
 router = APIRouter(prefix='/chat', tags=['chat'])
 
 
 @router.post('/question', summary="用户提问")
-async def user_qa(body: UserQA):
+async def user_qa(body: UserQA, current_user: User = Depends(get_current_user)):
     task_id = body.task_id
     question = body.question
     collection_name = f"collection_{task_id}"
@@ -62,11 +65,20 @@ async def chat_stream(
     task_id: str,
     token: Optional[str] = Query(None)
 ):
-    # # === 第一步：认证 ===
-    #     # if not verify_token(token):
-    #     #     await websocket.close(code=4003)  # 自定义关闭码：认证失败
-    #     #     logger.warning("🔒 WebSocket 连接因认证失败被拒绝")
-    #     return
+    # === 第一步：Token 认证 ===
+    # WebSocket 无法返回标准 401，采用自定义关闭码 4401 表示认证失败
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=4401)
+        logger.warning("🔒 WebSocket 连接因未提供 Token 被拒绝")
+        return
+    try:
+        decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+    except HTTPException:
+        await websocket.accept()
+        await websocket.close(code=4401)
+        logger.warning("🔒 WebSocket 连接因 Token 无效或过期被拒绝")
+        return
 
     # === 第二步：接受连接 ===
     await websocket.accept()
@@ -122,7 +134,7 @@ async def chat_stream(
 
 
 @router.post('/temp/question', description="临时对话")
-async def temp_chat(body: UserTempQA):
+async def temp_chat(body: UserTempQA, current_user: User = Depends(get_current_user)):
     async def stream_response():
         """生成流式响应"""
 
@@ -136,7 +148,7 @@ async def temp_chat(body: UserTempQA):
 
 
 @router.post('/list', summary="获取聊天记录列表")
-async def get_chat_message_list(body: ChatMessageQuery):
+async def get_chat_message_list(body: ChatMessageQuery, current_user: User = Depends(get_current_user)):
     chat_messages, total = ChatMessageDao.get_list_by_task_id(
         task_id=body.task_id,
         page_size=body.page_size,
@@ -150,7 +162,7 @@ async def get_chat_message_list(body: ChatMessageQuery):
 
 
 @router.post('/add', summary="添加聊天记录")
-async def insert_chat_message(chat_message: ChatMessageAdd):
+async def insert_chat_message(chat_message: ChatMessageAdd, current_user: User = Depends(get_current_user)):
     ChatMessageDao.add(
         ChatMessage(
             task_id=chat_message.task_id,
@@ -163,7 +175,7 @@ async def insert_chat_message(chat_message: ChatMessageAdd):
 
 
 @router.post('/update', summary="更新聊天记录")
-async def update_message(chat_message: ChatMessageUpdate):
+async def update_message(chat_message: ChatMessageUpdate, current_user: User = Depends(get_current_user)):
     chat = ChatMessageDao.get_chat_by_chat_id(
         chat_id=chat_message.chat_id
     )

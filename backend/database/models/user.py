@@ -19,10 +19,15 @@ class User(UserBase, table=True):
 
 class UserDao:
     @classmethod
-    def get_by_username(cls, username: str) -> User:
+    def get_by_username(cls, username: str) -> Optional[User]:
         with session_getter() as session:
             statement = select(User).where(User.username == username)
             return session.scalars(statement).first()
+
+    @classmethod
+    def get_by_id(cls, user_id: int) -> Optional[User]:
+        with session_getter() as session:
+            return session.get(User, user_id)
 
     @classmethod
     def add(cls, username: str, password: str, phone_number: Optional[str] = None) -> User:

@@ -3,11 +3,13 @@ import tempfile
 import uuid
 from loguru import logger
 import aiofiles
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
 from starlette.concurrency import run_in_threadpool
 
 from api.schemas import resp_200
 from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, KnowledgeType
+from database.models.user import User
+from utils.dependencies import get_current_user
 from utils.file_loader import FileLoader
 from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
@@ -20,7 +22,11 @@ SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(default=None)):
+async def upload_file(
+    file: UploadFile = File(...),
+    knowledge_id: str = Form(default=None),
+    current_user: User = Depends(get_current_user),
+):
     suffix = file.filename.split(".")[-1].lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise HTTPException(
@@ -112,7 +118,12 @@ async def upload_file(file: UploadFile = File(...), knowledge_id: str = Form(def
 
 
 @router.get("/file_list")
-async def get_file_list(knowledge_id: str = None, page_num: int = 10, page_size: int = 1):
+async def get_file_list(
+    knowledge_id: str = None,
+    page_num: int = 10,
+    page_size: int = 1,
+    current_user: User = Depends(get_current_user),
+):
     chat_messages, total = KnowledgeFileDao.get_list_by_knowledge_id(
         knowledge_id=knowledge_id,
         page_size=page_size,
@@ -126,7 +137,11 @@ async def get_file_list(knowledge_id: str = None, page_num: int = 10, page_size:
 
 
 @router.get("/get_file_chunks")
-async def get_file_chunks(file_id: str, knowledge_id: str):
+async def get_file_chunks(
+    file_id: str,
+    knowledge_id: str,
+    current_user: User = Depends(get_current_user),
+):
     try:
         results = db_manager.get_by_file_id_and_knowledge_id(
             file_id=file_id, knowledge_id=knowledge_id
@@ -143,7 +158,11 @@ async def get_file_chunks(file_id: str, knowledge_id: str):
 
 
 @router.get("/delete_file")
-async def delete_file(file_id: str, knowledge_id: str):
+async def delete_file(
+    file_id: str,
+    knowledge_id: str,
+    current_user: User = Depends(get_current_user),
+):
     # 1. 先查询文件是否存在（需要获取 knowledge_id 来定位集合）
     knowledge_file = KnowledgeFileDao.get_by_id(file_id=file_id)
     if not knowledge_file:

@@ -2,17 +2,18 @@ import asyncio
 import json
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from starlette.responses import StreamingResponse, JSONResponse
 
 from api.schemas import resp_200
 from database.models.user import User, UserDao
+from utils.dependencies import get_current_user
 
 router = APIRouter(prefix='/user', tags=['user'])
 
 
 @router.post("/tts/relay")
-async def relay_tts(request: Request):
+async def relay_tts(request: Request, current_user: User = Depends(get_current_user)):
     """
     中继接口：流式调用 TTS 服务并将语音流转发给前端
     """
