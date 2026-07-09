@@ -7,6 +7,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
 from starlette.concurrency import run_in_threadpool
 
 from api.schemas import resp_200
+from database.models.knowledge import Knowledge, KnowledgeDao
 from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, KnowledgeType
 from database.models.user import User
 from utils.dependencies import get_current_user
@@ -19,6 +20,38 @@ router = APIRouter(prefix='/knowledge', tags=['knowledge'])
 
 # 支持的文件类型白名单（扩展名不含点），从 markitdown_converter 动态获取，保持单一数据源
 SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
+
+
+def _ensure_knowledge(knowledge_id: str, user: User) -> str:
+    """
+    确保知识库存在且当前用户有权访问。
+    - knowledge_id 为空：自动生成并创建知识库（user_ids=[当前用户]）。
+    - knowledge_id 对应知识库不存在：创建并绑定当前用户。
+    - 已存在但当前用户无权：抛 403。
+    返回有效的 knowledge_id。
+    """
+    if not knowledge_id:
+        knowledge_id = uuid.uuid4().hex
+    # 先带权限查
+    if KnowledgeDao.get_by_id(k_id=knowledge_id, user_id=user.id) is not None:
+        return knowledge_id
+    # 查不到，判断是不存在还是无权
+    if KnowledgeDao.get_by_id(k_id=knowledge_id) is None:
+        # 不存在，创建
+        KnowledgeDao.add(Knowledge(
+            id=knowledge_id,
+            name=knowledge_id,
+            user_ids=[user.id],
+        ))
+        return knowledge_id
+    # 存在但无权
+    raise HTTPException(status_code=403, detail="无权访问该知识库")
+
+
+def _check_knowledge_permission(knowledge_id: str, user: User):
+    """校验当前用户对知识库的访问权限，无权抛 403。"""
+    if not knowledge_id or KnowledgeDao.get_by_id(k_id=knowledge_id, user_id=user.id) is None:
+        raise HTTPException(status_code=403, detail="无权访问该知识库")
 
 
 @router.post("/upload")
@@ -36,6 +69,9 @@ async def upload_file(
 
     tmp_path = None
     file_id = uuid.uuid4().hex
+
+    # 确保知识库存在且当前用户有权（knowledge_id 为空则自动创建）
+    knowledge_id = _ensure_knowledge(knowledge_id, current_user)
 
     try:
         # 1. 异步创建临时文件路径
@@ -102,6 +138,9 @@ async def upload_file(
             "chunk_count": chunk_count
         })
 
+    except HTTPException:
+        # 透传业务层主动抛出的 HTTP 异常（如 403），避免被转成 500
+        raise
     except Exception as e:
         # 记录日志 log.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -124,6 +163,7 @@ async def get_file_list(
     page_size: int = 1,
     current_user: User = Depends(get_current_user),
 ):
+    _check_knowledge_permission(knowledge_id, current_user)
     chat_messages, total = KnowledgeFileDao.get_list_by_knowledge_id(
         knowledge_id=knowledge_id,
         page_size=page_size,
@@ -142,6 +182,7 @@ async def get_file_chunks(
     knowledge_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    _check_knowledge_permission(knowledge_id, current_user)
     try:
         results = db_manager.get_by_file_id_and_knowledge_id(
             file_id=file_id, knowledge_id=knowledge_id
@@ -163,6 +204,7 @@ async def delete_file(
     knowledge_id: str,
     current_user: User = Depends(get_current_user),
 ):
+    _check_knowledge_permission(knowledge_id, current_user)
     # 1. 先查询文件是否存在（需要获取 knowledge_id 来定位集合）
     knowledge_file = KnowledgeFileDao.get_by_id(file_id=file_id)
     if not knowledge_file:

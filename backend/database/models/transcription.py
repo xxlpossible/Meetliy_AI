@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import IntEnum
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
-from sqlalchemy import Column, DateTime, String, text, Text, JSON, desc
+from sqlalchemy import Column, DateTime, String, text, Text, JSON, desc, cast
 from sqlmodel import Field, SQLModel, select
 
 from database.base import session_getter
@@ -24,6 +24,12 @@ class Delete(IntEnum):
 
 class TranscriptionBase(SQLModel):
     task_name: Optional[str] = Field(default=None)
+    # 有权访问该会议转录结果的用户ID列表（会议可多人参与，后续可放权）
+    # 存为 JSON 数组，查询时用 JSON_CONTAINS 在 SQL 层过滤，保证分页正确
+    user_ids: Optional[List[int]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False, comment="有权访问的用户ID列表")
+    )
     status: Optional[int] = Field(default=Status.PENDING.value)
     task_result: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
@@ -63,23 +69,37 @@ class TranscriptionDao:
             return transcription
 
     @classmethod
-    def delete(cls, task_id: str):
-        with session_getter() as session:
-            transcription = cls.get_by_id(t_id=task_id)
-            if not transcription:
-                raise ValueError(f"Transcription with task_id '{task_id}' not found")
+    def delete(cls, task_id: str, user_id: int = None):
+        """删除转录记录。传入 user_id 时校验该用户是否有权操作。"""
+        transcription = cls.get_by_id(t_id=task_id, user_id=user_id)
+        if not transcription:
+            raise ValueError(f"Transcription with task_id '{task_id}' not found or no permission")
 
+        with session_getter() as session:
             session.delete(transcription)
             session.commit()
 
     @classmethod
-    def get_by_id(cls, t_id: str) -> Transcription:
+    def get_by_id(cls, t_id: str, user_id: int = None) -> Optional[Transcription]:
+        """
+        按主键查询转录记录。
+        传入 user_id 时，仅当该用户在 user_ids 中才返回记录（越权防护）；
+        不传 user_id 则不做权限校验（仅内部/管理用途）。
+        """
         with session_getter() as session:
             statement = select(Transcription).where(Transcription.id == t_id)
+            if user_id is not None:
+                statement = statement.where(
+                    func.json_contains(Transcription.user_ids, cast(user_id, JSON))
+                )
             return session.exec(statement).scalars().first()
 
     @classmethod
-    def list(cls, body: TranscriptionQueryVo):
+    def list(cls, body: TranscriptionQueryVo, user_id: int = None):
+        """
+        分页查询转录列表。
+        传入 user_id 时，仅返回该用户有权访问（user_ids 包含该用户）的记录。
+        """
         with session_getter() as session:
             # 构建基础查询
             statement = select(Transcription)
@@ -88,6 +108,10 @@ class TranscriptionDao:
             conditions = [Transcription.is_delete != Delete.YES.value]
             if body.task_name:
                 conditions.append(Transcription.task_name.contains(body.task_name))
+            if user_id is not None:
+                conditions.append(
+                    func.json_contains(Transcription.user_ids, cast(user_id, JSON))
+                )
 
             # 如果有条件，则添加到查询中
             if conditions:
@@ -104,10 +128,11 @@ class TranscriptionDao:
             # 执行查询
             results = session.exec(statement).scalars().all()
 
-            # 查询总记录数（用于分页信息）- 修复错误
+            # 查询总记录数（用于分页信息）
             count_statement = select(func.count(Transcription.id))
             if conditions:
                 count_statement = count_statement.where(and_(*conditions))
             total_count = session.exec(count_statement).scalars().one()
 
             return results, total_count
+

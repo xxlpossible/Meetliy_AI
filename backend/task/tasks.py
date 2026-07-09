@@ -2,6 +2,7 @@
 from loguru import logger
 
 from database.models.transcription import TranscriptionDao, Status
+from database.models.knowledge import Knowledge, KnowledgeDao
 from langchain_pipeline.agent import MeetingAgent
 from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
@@ -52,6 +53,25 @@ def transcription(
                 collection_name=collection_name,
                 documents=sentences
             )
+
+            # 创建 Knowledge 知识库实体，使会议文本集合有元信息归属与权限控制。
+            # knowledge_id 与 task_id 一致（collection_{t_id} 对应此知识库），
+            # user_ids 继承自转录任务（会议参与者在 upload 时已绑定），保证有权用户可访问。
+            if KnowledgeDao.get_by_id(k_id=t_id) is None:
+                KnowledgeDao.add(Knowledge(
+                    id=t_id,
+                    name=task.task_name or f"会议转录-{t_id[:8]}",
+                    description="语音转录任务完成后自动生成的会议知识库",
+                    user_ids=list(task.user_ids or []),
+                ))
+                logger.info(f"Knowledge 知识库实体已创建，id={t_id}")
+            else:
+                # 已存在则同步更新 user_ids（转录任务可能后续放权）
+                existing = KnowledgeDao.get_by_id(k_id=t_id)
+                existing.user_ids = list(task.user_ids or [])
+                existing.name = task.task_name or existing.name
+                KnowledgeDao.update(existing)
+                logger.info(f"Knowledge 知识库实体已更新，id={t_id}")
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
 

@@ -28,6 +28,8 @@ router = APIRouter(prefix='/audio', tags=['audio'])
 async def upload_file(
         audio_file: UploadFile = File(...),
         task_name: Optional[str] = Form(None),
+        # 这里后续需要加上一个参数 user_ids 代表参加会议的用户ID 但是目前还未实现联机会议 故ID只有current_user 不需要改参数
+        # user_ids: Optional[List]
         current_user: User = Depends(get_current_user)
 ):
     # 获取原始文件扩展名（如 .mp3 / .wav）
@@ -55,11 +57,12 @@ async def upload_file(
         # TODO 从获取公网下载地址 到下面的数据库读写操作其实都是同步操作，不应该出现在异步的接口当中，都需要放入线程池
         public_url = TmpFilesUploader.upload_from_temp_path(temp_path=tmp_path)
 
-        # 创建任务对象
+        # 创建任务对象（绑定当前用户为首个有权用户）
         t_id = uuid.uuid4().hex
         TranscriptionDao.add(Transcription(
             id=t_id,
             task_name=task_name,
+            user_ids=[current_user.id],
             status=Status.PENDING.value,
             task_result=None,
             is_delete=Delete.NOT.value
@@ -89,7 +92,7 @@ async def get_list(
         body: TranscriptionQueryVo,
         current_user: User = Depends(get_current_user)
 ):
-    results, total = TranscriptionDao.list(body=body)
+    results, total = TranscriptionDao.list(body=body, user_id=current_user.id)
     return resp_200(data={"data": results, "total": total})
 
 
@@ -99,7 +102,10 @@ async def delete(
         current_user: User = Depends(get_current_user)
 ):
     try:
-        TranscriptionDao.delete(task_id=task_id)
+        TranscriptionDao.delete(task_id=task_id, user_id=current_user.id)
+    except ValueError:
+        # 记录不存在或当前用户无权操作
+        raise HTTPException(status_code=403, detail="无权操作或记录不存在")
     except Exception:
         raise HTTPException(status_code=500, detail="删除失败")
     return resp_200()
@@ -111,9 +117,10 @@ async def update(
         current_user: User = Depends(get_current_user)
 ):
     task_id = body.task_id
-    task = TranscriptionDao.get_by_id(t_id=task_id)
+    # 带 user_id 校验权限：无权查询不到记录
+    task = TranscriptionDao.get_by_id(t_id=task_id, user_id=current_user.id)
     if task is None:
-        raise HTTPException(status_code=500, detail="未找到该记录")
+        raise HTTPException(status_code=403, detail="无权操作或记录不存在")
     task.task_name = body.task_name
     task.note = body.note
     TranscriptionDao.update(task)
@@ -127,7 +134,10 @@ async def get_audio2text_task_status(
 ):
     result = []
     for t_id in task_ids:
-        one = TranscriptionDao.get_by_id(t_id=t_id)
+        # 带 user_id 校验权限，且防御空值（修复原有 AttributeError）
+        one = TranscriptionDao.get_by_id(t_id=t_id, user_id=current_user.id)
+        if one is None:
+            continue
         if one.status == Status.COMPLETE.value:
             result.append(
                 {

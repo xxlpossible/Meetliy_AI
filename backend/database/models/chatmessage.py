@@ -30,10 +30,18 @@ class ChatMessage(ChatMessageBase, table=True):
 
 class ChatMessageDao:
     @classmethod
-    def get_list_by_task_id(cls, task_id: str, page_size: int, page_num: int):
+    def get_list_by_task_id(cls, task_id: str, page_size: int, page_num: int, user_id: int = None):
+        """
+        分页查询某 task 下的聊天记录。
+        传入 user_id 时仅返回该用户的记录（越权防护，用户间互不可见）。
+        """
         with session_getter() as session:
-            query = select(ChatMessage).where(ChatMessage.task_id == task_id)
-            count = select(func.count()).select_from(ChatMessage).where(ChatMessage.task_id == task_id)
+            conditions = [ChatMessage.task_id == task_id]
+            if user_id is not None:
+                conditions.append(ChatMessage.user_id == user_id)
+
+            query = select(ChatMessage).where(*conditions)
+            count = select(func.count()).select_from(ChatMessage).where(*conditions)
 
             total_count = session.scalar(count) or 0
 
@@ -63,8 +71,35 @@ class ChatMessageDao:
             return db_message
 
     @classmethod
-    def get_chat_by_chat_id(cls, chat_id: str = None) -> ChatMessage:
+    def get_chat_by_chat_id(cls, chat_id: str = None, user_id: int = None) -> Optional[ChatMessage]:
+        """
+        按 chat_id 查询聊天记录。
+        传入 user_id 时仅返回属于该用户的记录（越权防护）。
+        """
         with session_getter() as session:
-            state = select(ChatMessage).where(ChatMessage.chat_id == chat_id)
-            return session.scalars(state).first()
+            conditions = [ChatMessage.chat_id == chat_id]
+            if user_id is not None:
+                conditions.append(ChatMessage.user_id == user_id)
+            statement = select(ChatMessage).where(*conditions)
+            return session.scalars(statement).first()
+
+    @classmethod
+    def delete(cls, chat_id: str, user_id: int = None) -> bool:
+        """
+        按 chat_id 删除聊天记录。
+        传入 user_id 时校验归属权限，非本人记录删除 0 行返回 False。
+        返回是否实际删除了记录。
+        """
+        with session_getter() as session:
+            conditions = [ChatMessage.chat_id == chat_id]
+            if user_id is not None:
+                conditions.append(ChatMessage.user_id == user_id)
+            statement = select(ChatMessage).where(*conditions)
+            chat = session.scalars(statement).first()
+            if chat is None:
+                return False
+            session.delete(chat)
+            session.commit()
+            return True
+
 

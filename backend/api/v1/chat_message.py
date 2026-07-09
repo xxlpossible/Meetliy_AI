@@ -152,7 +152,8 @@ async def get_chat_message_list(body: ChatMessageQuery, current_user: User = Dep
     chat_messages, total = ChatMessageDao.get_list_by_task_id(
         task_id=body.task_id,
         page_size=body.page_size,
-        page_num=body.page_num
+        page_num=body.page_num,
+        user_id=current_user.id
     )
     data = {
         "items": chat_messages,
@@ -163,10 +164,11 @@ async def get_chat_message_list(body: ChatMessageQuery, current_user: User = Dep
 
 @router.post('/add', summary="添加聊天记录")
 async def insert_chat_message(chat_message: ChatMessageAdd, current_user: User = Depends(get_current_user)):
+    # user_id 取当前登录用户，不信任前端传值，防止伪造归属
     ChatMessageDao.add(
         ChatMessage(
             task_id=chat_message.task_id,
-            user_id=chat_message.user_id,
+            user_id=current_user.id,
             chat_messages=chat_message.chat_messages,
             chat_id=uuid.uuid4().hex
         )
@@ -176,12 +178,23 @@ async def insert_chat_message(chat_message: ChatMessageAdd, current_user: User =
 
 @router.post('/update', summary="更新聊天记录")
 async def update_message(chat_message: ChatMessageUpdate, current_user: User = Depends(get_current_user)):
+    # 带 user_id 校验权限：非本人记录查不到，无法越权修改
     chat = ChatMessageDao.get_chat_by_chat_id(
-        chat_id=chat_message.chat_id
+        chat_id=chat_message.chat_id,
+        user_id=current_user.id
     )
     if chat is None:
-        raise HTTPException(status_code=500, detail="未查询到该聊天")
+        raise HTTPException(status_code=403, detail="无权操作或未查询到该聊天")
     chat.chat_messages = chat_message.chat_messages
     ChatMessageDao.update(chat)
     return resp_200()
+
+
+@router.delete('/delete', summary="删除聊天记录")
+async def delete_message(chat_id: str, current_user: User = Depends(get_current_user)):
+    # 带 user_id 校验权限：非本人记录删除返回 False，拒绝越权删除
+    deleted = ChatMessageDao.delete(chat_id=chat_id, user_id=current_user.id)
+    if not deleted:
+        raise HTTPException(status_code=403, detail="无权操作或未查询到该聊天")
+    return resp_200(message="删除成功")
 
