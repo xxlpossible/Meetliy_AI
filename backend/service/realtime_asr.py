@@ -1,6 +1,8 @@
-from fastapi import WebSocket
+import json
+from loguru import logger
 import dashscope
-from dashscope.audio.asr import TranslationRecognizerCallback, TranscriptionResult, TranslationResult, RecognitionResult
+from dashscope.audio.qwen_omni import OmniRealtimeCallback
+from fastapi import WebSocket
 import asyncio
 from settings import settings
 
@@ -9,63 +11,103 @@ dashscope_config = settings.get_dashscope_config()
 dashscope.api_key = dashscope_config.get("api_key")
 
 
-class WebSocketCallback(TranslationRecognizerCallback):
+class WebSocketCallback(OmniRealtimeCallback):
     """
-    自定义回调类，用于将识别结果通过 WebSocket 发送给前端
+    自定义回调类，用于将识别结果通过 WebSocket 发送给前端。
+    使用新版 dashscope.audio.qwen_omni SDK，解析原始 JSON 事件。
     """
 
     def __init__(self, websocket: WebSocket, loop: asyncio.AbstractEventLoop):
         super().__init__()
         self.websocket = websocket
         self.loop = loop
+        self.session_id = None
 
     def on_open(self) -> None:
-        print("DashScope Recognition Started.")
+        logger.info("DashScope Recognition Started.")
 
-    def on_close(self) -> None:
-        print("DashScope Recognition Closed.")
+    def on_close(self, close_status_code, close_msg) -> None:
+        logger.info(f"DashScope Recognition Closed. code={close_status_code}, msg={close_msg}")
 
-    def on_event(
-            self,
-            request_id,
-            transcription_result: TranscriptionResult,
-            translation_result: TranslationResult,
-            usage,
-    ) -> None:
+    def on_event(self, message) -> None:
         """
-        SDK会在子线程调用此方法，因此需要使用 threadsafe 方式调用 async 的 websocket 发送
+        SDK 会在子线程调用此方法，接收事件。
+        注：SDK 内部已将 JSON 字符串解析为 dict 后传入（尽管类型标注为 str），
+        需兼容两种情况处理。
         """
-        response_data = {
-            "type": "result",
-            "transcription": None,
-            "translation": None
-        }
+        try:
+            # SDK 实际上传入的是 dict（已 parsed），但类型标注是 str
+            if isinstance(message, str):
+                event = json.loads(message)
+            elif isinstance(message, dict):
+                event = message
+            else:
+                return
+            event_type = event.get("type", "")
 
-        # 处理识别结果（中文）
-        if transcription_result:
-            response_data["transcription"] = {
-                "text": transcription_result.text,
-                "sentence_id": transcription_result.sentence_id,
-                "is_sentence_end": transcription_result.is_sentence_end
-            }
+            # session.created → 记录 session ID
+            if event_type == "session.created":
+                self.session_id = event.get("session", {}).get("id")
+                logger.info(f"Session created: {self.session_id}")
+                return
 
-        # 处理翻译结果（英文）
-        if translation_result:
-            # 假设我们只取第一个目标语言 'en'
-            if translation_result.get_language_list():
-                en_trans = translation_result.get_translation("en")
-                if en_trans:
-                    response_data["translation"] = {
-                        "text": en_trans.text,
-                        "sentence_id": en_trans.sentence_id,
-                        "is_sentence_end": en_trans.is_sentence_end
+            # conversation.item.input_audio_transcription.completed → 最终识别结果
+            if event_type == "conversation.item.input_audio_transcription.completed":
+                transcript = event.get("transcript", "")
+                response_data = {
+                    "type": "result",
+                    "transcription": {
+                        "text": transcript,
+                        "is_final": True
                     }
+                }
+                asyncio.run_coroutine_threadsafe(
+                    self.websocket.send_json(response_data),
+                    self.loop
+                )
+                return
 
-        # 只有当有内容时才发送
-        if response_data["transcription"] or response_data["translation"]:
-            # 关键：将异步发送任务提交给主事件循环
-            asyncio.run_coroutine_threadsafe(
-                self.websocket.send_json(response_data),
-                self.loop
-            )
+            # conversation.item.input_audio_transcription.text → 中间识别结果
+            if event_type == "conversation.item.input_audio_transcription.text":
+                text = event.get("text", "")
+                stash = event.get("stash", "")
+                full_text = text + stash
+                response_data = {
+                    "type": "result",
+                    "transcription": {
+                        "text": full_text,
+                        "is_final": False
+                    }
+                }
+                asyncio.run_coroutine_threadsafe(
+                    self.websocket.send_json(response_data),
+                    self.loop
+                )
+                return
 
+            # input_audio_buffer.speech_started → 语音开始
+            if event_type == "input_audio_buffer.speech_started":
+                response_data = {
+                    "type": "speech_started"
+                }
+                asyncio.run_coroutine_threadsafe(
+                    self.websocket.send_json(response_data),
+                    self.loop
+                )
+                return
+
+            # input_audio_buffer.speech_stopped → 语音停止
+            if event_type == "input_audio_buffer.speech_stopped":
+                response_data = {
+                    "type": "speech_stopped"
+                }
+                asyncio.run_coroutine_threadsafe(
+                    self.websocket.send_json(response_data),
+                    self.loop
+                )
+                return
+
+        except json.JSONDecodeError:
+            print(f"[Error] Failed to parse event as JSON: {message[:200]}")
+        except Exception as e:
+            print(f"[Error] Exception in on_event: {e}")

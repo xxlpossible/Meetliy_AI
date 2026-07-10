@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 
 import aiofiles
@@ -7,7 +8,8 @@ import tempfile
 import uuid
 from typing import Optional, List
 
-from dashscope.audio.asr import TranslationRecognizerRealtime
+from dashscope.audio.qwen_omni import OmniRealtimeConversation, MultiModality
+from dashscope.audio.qwen_omni.omni_realtime import TranscriptionParams
 from fastapi import APIRouter, HTTPException, Body, Response, UploadFile, File, Form, Depends, Query
 
 from api.schemas import resp_200
@@ -20,6 +22,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from utils.security import TOKEN_TYPE_ACCESS, decode_token
 from utils.dependencies import get_current_user
 from utils.uploader import TmpFilesUploader
+from settings import settings
 
 router = APIRouter(prefix='/audio', tags=['audio'])
 
@@ -96,7 +99,7 @@ async def get_list(
     return resp_200(data={"data": results, "total": total})
 
 
-@router.delete('/delete', description="删除指定的记录")
+@router.post('/delete', description="删除指定的记录")
 async def delete(
         task_id: str,
         current_user: User = Depends(get_current_user)
@@ -176,28 +179,47 @@ async def websocket_endpoint(
     # 初始化回调，传入 websocket 和 loop
     callback = WebSocketCallback(websocket, loop)
 
-    # 初始化识别器
-    translator = TranslationRecognizerRealtime(
-        model="gummy-realtime-v1",
-        format="pcm",
-        sample_rate=16000,
-        transcription_enabled=True,
-        translation_enabled=True,
-        translation_target_languages=["en"],
+    # 获取 DashScope 配置
+    dashscope_config = settings.get_dashscope_config()
+    workspace_id = dashscope_config.get("workspace_id", "")
+
+    # 初始化新版 OmniRealtimeConversation
+    # 使用私有端点（需 Workspace ID），无 workspace_id 时回退到默认公共端点
+    ws_url = f'wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' if workspace_id else None
+    conversation = OmniRealtimeConversation(
+        model='qwen3-asr-flash-realtime',
         callback=callback,
+        api_key=dashscope_config.get("api_key"),
+        url=ws_url,
     )
 
     try:
-        translator.start()
-        print("Backend: Recognizer started, waiting for audio...")
+        # 建立 WebSocket 连接
+        conversation.connect()
+        print("Backend: Connected to DashScope, configuring session...")
+
+        # 配置会话：启用转写 + VAD
+        conversation.update_session(
+            output_modalities=[MultiModality.TEXT],
+            enable_input_audio_transcription=True,
+            transcription_params=TranscriptionParams(
+                language='zh',
+                sample_rate=16000,
+                input_audio_format="pcm"
+            ),
+            enable_turn_detection=True,
+            turn_detection_type='server_vad'
+        )
+        print("Backend: Session configured, waiting for audio...")
 
         while True:
             # 接收前端发送的二进制音频帧 (bytes)
             data = await websocket.receive_bytes()
 
-            # 如果接收到数据，发送给 DashScope
+            # 如果接收到数据，base64 编码后发送给 DashScope
             if data:
-                translator.send_audio_frame(data)
+                audio_b64 = base64.b64encode(data).decode('ascii')
+                conversation.append_audio(audio_b64)
             else:
                 break
 
@@ -207,13 +229,9 @@ async def websocket_endpoint(
         print(f"Error: {e}")
     finally:
         # 清理资源
-        translator.stop()
+        try:
+            conversation.end_session()
+        except Exception:
+            pass
+        conversation.close()
         print("Recognizer stopped.")
-
-
-
-
-
-
-
-
