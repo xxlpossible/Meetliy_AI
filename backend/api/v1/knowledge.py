@@ -1,25 +1,29 @@
 import os
-import tempfile
 import uuid
 from loguru import logger
 import aiofiles
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
-from starlette.concurrency import run_in_threadpool
 
 from api.schemas import resp_200
 from database.models.knowledge import Knowledge, KnowledgeDao
-from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, KnowledgeType
+from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, FileState
 from database.models.user import User
 from utils.dependencies import get_current_user
-from utils.file_loader import FileLoader
 from utils.siliconflow_embedding import db_manager
-from utils.splitter import Splitter
 from utils.markitdown_converter import get_supported_extensions, get_knowledge_type
+from task.tasks import parse_knowledge_file
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
 
 # 支持的文件类型白名单（扩展名不含点），从 markitdown_converter 动态获取，保持单一数据源
 SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
+
+# 持久化上传目录：文件保存于此，路径传给 Celery worker 解析，解析完成后由任务清理。
+# Celery worker 与 FastAPI 需部署在同一机器方可访问该路径（毕设单机部署场景）。
+# 路径基于本文件位置推导出 backend 根目录，避免依赖运行时 CWD。
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+UPLOAD_DIR = os.path.join(_BACKEND_DIR, "data", "knowledge_uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 def _ensure_knowledge(knowledge_id: str, user: User) -> str:
@@ -60,6 +64,14 @@ async def upload_file(
     knowledge_id: str = Form(default=None),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    上传知识库文件并异步解析。
+
+    接口仅负责：校验格式 → 持久化保存文件 → 创建 KnowledgeFile 记录(state=0 解析中)
+    → 触发 Celery 后台解析任务 → 立即返回 file_id 与 state。
+    文档解析（加载/分块/向量化）在 Celery worker 中异步执行，前端通过
+    /knowledge/file_state 轮询获取解析进度与结果。
+    """
     suffix = file.filename.split(".")[-1].lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise HTTPException(
@@ -67,93 +79,104 @@ async def upload_file(
             detail=f"Unsupported file type: .{suffix}，支持 PDF/Word/Excel/PPT/图片/音频/文本/代码 等格式"
         )
 
-    tmp_path = None
-    file_id = uuid.uuid4().hex
-
     # 确保知识库存在且当前用户有权（knowledge_id 为空则自动创建）
     knowledge_id = _ensure_knowledge(knowledge_id, current_user)
 
-    try:
-        # 1. 异步创建临时文件路径
-        fd, tmp_path = tempfile.mkstemp(suffix=f".{suffix}")
-        os.close(fd)  # 关闭 mkstemp 返回的句柄，后面用 aiofiles 打开
+    file_id = uuid.uuid4().hex
+    # 持久化保存路径（任务结束后由 Celery 清理，不在接口层删除）
+    save_path = os.path.join(UPLOAD_DIR, f"{file_id}.{suffix}")
 
-        # 2. 异步分块写入
-        async with aiofiles.open(tmp_path, "wb") as f:
+    try:
+        # 1. 异步分块写入持久化上传目录
+        async with aiofiles.open(save_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
                 await f.write(chunk)
-
-        # 3. 将同步耗时操作放入线程池执行，避免阻塞主线程
-        # 包装一个内部函数来处理后续逻辑
-        def process_document(path, sfx, k_id, f_id, f_name):
-            # 判断知识类型：0文本 1语音 2图片
-            ktype = get_knowledge_type(f".{sfx}")
-
-            loader = FileLoader()
-            docs = loader.load_document(file_path=path, file_type=sfx)
-
-            # 语音转录为纯文本，用通用递归分块；文本/图片（OCR 可能含 Markdown 表格）用 MD 分块
-            if ktype == KnowledgeType.AUDIO.value:
-                chunks = Splitter.split_documents(docs)
-            else:
-                chunks = Splitter.split_markdown_documents(docs)
-
-            metadata_list = []
-            content_list = []
-            for idx, chunk in enumerate(chunks):
-                chunk.metadata.update({
-                    "knowledge_id": k_id,
-                    "file_id": f_id,
-                    "type": ktype,  # 知识类型写入 metadata，方便向量库查询过滤
-                })
-                metadata_list.append(chunk.metadata)
-                content_list.append(chunk.page_content)
-
-            # 向量入库
-            db_manager.add_documents(
-                metadatas=metadata_list,
-                collection_name=f"collection_{k_id}",
-                documents=content_list,
-                ids=[f"{f_id}_{i}" for i in range(len(content_list))]
-            )
-
-            # 数据库记录（带知识类型）
-            KnowledgeFileDao.add(KnowledgeFile(
-                knowledge_id=k_id,
-                file_name=f_name,
-                chunks_counts=len(content_list),
-                type=ktype,
-                id=f_id
-            ))
-            return len(content_list)
-
-        # 在线程池中执行耗时任务
-        chunk_count = await run_in_threadpool(
-            process_document, tmp_path, suffix, knowledge_id, file_id, file.filename
-        )
-
-        return resp_200(data={
-            "msg": "Document indexed successfully",
-            "file_id": file_id,
-            "chunk_count": chunk_count
-        })
-
-    except HTTPException:
-        # 透传业务层主动抛出的 HTTP 异常（如 403），避免被转成 500
-        raise
     except Exception as e:
-        # 记录日志 log.error(f"Upload failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-    finally:
-        # 4. 彻底清理临时文件
-        await file.close()  # 异步关闭上传的文件句柄
-        if tmp_path and os.path.exists(tmp_path):
+        # 写入失败：清理可能残留的半成品文件
+        if os.path.exists(save_path):
             try:
-                os.remove(tmp_path)
-                logger.info(f"临时文件已被删除：{tmp_path}")
-            except Exception as e:
-                logger.error(f"Failed to delete tmp file: {e}")
+                os.remove(save_path)
+            except Exception:
+                pass
+        logger.error(f"文件保存失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件保存失败: {e}")
+    finally:
+        await file.close()
+
+    # 2. 创建 KnowledgeFile 记录，state=0(解析中)，先于任务触发，保证前端可立即轮询
+    # 知识类型按扩展名判定（纯函数查表，无外部调用），保持与原逻辑一致
+    ktype = get_knowledge_type(f".{suffix}")
+    KnowledgeFileDao.add(KnowledgeFile(
+        id=file_id,
+        knowledge_id=knowledge_id,
+        file_name=file.filename,
+        type=ktype,
+        state=FileState.PROCESSING.value,
+        user_id=current_user.id,
+    ))
+
+    # 3. 触发 Celery 后台解析任务
+    try:
+        parse_knowledge_file.delay(
+            file_path=save_path,
+            file_suffix=suffix,
+            knowledge_id=knowledge_id,
+            file_id=file_id,
+        )
+    except Exception as e:
+        # 任务提交失败（如 Redis 不可达）：标记为解析失败，并清理已保存文件
+        logger.exception(f"Celery 任务提交失败 file_id={file_id}")
+        KnowledgeFileDao.update_state(
+            file_id=file_id,
+            state=FileState.FAILED.value,
+            fail_reason=f"解析任务提交失败: {e}",
+        )
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"解析任务提交失败: {e}")
+
+    # 4. 立即返回，解析在后台异步执行
+    return resp_200(data={
+        "msg": "文件已上传，正在后台解析",
+        "file_id": file_id,
+        "knowledge_id": knowledge_id,
+        "state": FileState.PROCESSING.value,
+    })
+
+
+@router.get("/file_state")
+async def get_file_state(
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    查询知识库文件解析状态，供前端轮询。
+
+    返回字段：
+        - state: 0解析中 1成功 2失败
+        - fail_reason: 失败原因（state=2 时有值）
+        - chunks_counts: 解析成功的分块数（state=1 时有值）
+        - file_name: 文件名
+    权限：通过文件所属知识库的 user_ids 校验，无权返回 403。
+    """
+    knowledge_file = KnowledgeFileDao.get_by_id(file_id=file_id)
+    if not knowledge_file:
+        raise HTTPException(status_code=404, detail="文件不存在或已被删除")
+
+    # 校验当前用户对该文件所属知识库的访问权限
+    _check_knowledge_permission(knowledge_file.knowledge_id, current_user)
+
+    return resp_200(data={
+        "file_id": knowledge_file.id,
+        "file_name": knowledge_file.file_name,
+        "knowledge_id": knowledge_file.knowledge_id,
+        "state": knowledge_file.state,
+        "fail_reason": knowledge_file.fail_reason,
+        "chunks_counts": knowledge_file.chunks_counts,
+    })
 
 
 @router.get("/file_list")
