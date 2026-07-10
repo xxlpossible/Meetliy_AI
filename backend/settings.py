@@ -2,10 +2,28 @@ import os
 from typing import Optional, Union, Dict
 
 import yaml
+from dotenv import load_dotenv
 
 
 from loguru import logger
 from pydantic_settings import BaseSettings
+
+# 提前加载 .env，确保配置项可被环境变量覆盖（.env 优先于数据库 config 表）
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+# 各 section 的环境变量前缀与已知字段。
+# known_fields 用于纯 .env 模式（数据库无配置）：即使 section_dict 为空，
+# 也能按已知字段从环境变量发现配置。
+_SECTION_META: Dict[str, tuple] = {
+    'openai_config':      ('OPENAI',       ['base_url', 'api_key', 'model']),
+    'transcription':      ('TRANSCRIPTION', ['base_url', 'api_key', 'model']),
+    'hugging_face_config': ('HUGGINGFACE', ['token']),
+    'minio_config':       ('',             ['MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY']),
+    'dashscope':          ('DASHSCOPE',    ['api_key']),
+    'rerank':             ('RERANK',       ['model', 'base_url', 'api_key']),
+    'qwen':               ('QWEN',         ['model', 'base_url', 'api_key']),
+    'embeddings':         ('EMBEDDINGS',   ['model', 'base_url', 'api_key']),
+}
 
 
 class Settings(BaseSettings):
@@ -30,37 +48,74 @@ class Settings(BaseSettings):
             else:
                 raise ConfigNotFoundError('initdb_config not found, please check your system config')
 
+    @staticmethod
+    def _merge_env(section_dict: dict, env_prefix: str, known_fields: list = None) -> dict:
+        """
+        用环境变量覆盖 section 配置项，实现「.env 优先、数据库兜底」。
+
+        规则：对每个字段 field，检查环境变量
+          - env_prefix 非空：{ENV_PREFIX}_{FIELD}（均大写），如 OPENAI_API_KEY 覆盖 openai_config.api_key
+          - env_prefix 为空：直接以字段名（大写）作为环境变量名，适用于字段本身已是 env 风格的 section（如 minio_config）
+
+        字段来源 = section_dict 的 keys ∪ known_fields，确保纯 .env 模式
+        （section_dict 为空）时也能按已知字段从环境变量发现配置。
+        仅当环境变量存在且非空时覆盖，否则保留数据库原值。
+        """
+        if not section_dict and not known_fields:
+            return {}
+        result = dict(section_dict) if section_dict else {}
+        fields = set(result.keys())
+        if known_fields:
+            fields = fields.union(known_fields)
+        for field in fields:
+            env_name = f"{env_prefix}_{field}".upper() if env_prefix else str(field).upper()
+            env_val = os.getenv(env_name)
+            if env_val is not None and env_val != "":
+                result[field] = env_val
+        return result
+
+    def _get_section(self, section_name: str) -> dict:
+        """
+        取某个 section 的配置字典。
+        数据库无配置（ConfigNotFoundError）时返回空字典，此时可完全由 .env 接管。
+        """
+        try:
+            return self.get_all_config().get(section_name, {}) or {}
+        except ConfigNotFoundError:
+            logger.debug(f"config 表无配置，{section_name} 完全使用环境变量")
+            return {}
+
     def get_openai_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('openai_config', {})
+        prefix, fields = _SECTION_META['openai_config']
+        return self._merge_env(self._get_section('openai_config'), prefix, fields)
 
     def get_transcription_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('transcription', {})
+        prefix, fields = _SECTION_META['transcription']
+        return self._merge_env(self._get_section('transcription'), prefix, fields)
 
     def get_hugging_face_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('hugging_face_config', {})
+        prefix, fields = _SECTION_META['hugging_face_config']
+        return self._merge_env(self._get_section('hugging_face_config'), prefix, fields)
 
     def get_minio_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('minio_config', {})
+        prefix, fields = _SECTION_META['minio_config']
+        return self._merge_env(self._get_section('minio_config'), prefix, fields)
 
     def get_dashscope_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('dashscope', {})
+        prefix, fields = _SECTION_META['dashscope']
+        return self._merge_env(self._get_section('dashscope'), prefix, fields)
 
     def get_rerank_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('rerank', {})
+        prefix, fields = _SECTION_META['rerank']
+        return self._merge_env(self._get_section('rerank'), prefix, fields)
 
     def get_qwen_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('qwen', {})
+        prefix, fields = _SECTION_META['qwen']
+        return self._merge_env(self._get_section('qwen'), prefix, fields)
 
     def get_embeddings_config(self):
-        all_config = self.get_all_config()
-        return all_config.get('embeddings', {})
+        prefix, fields = _SECTION_META['embeddings']
+        return self._merge_env(self._get_section('embeddings'), prefix, fields)
 
 
 class ConfigNotFoundError(Exception):
