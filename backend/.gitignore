@@ -6,3 +6,5 @@
 /data
 ../.workbuddy
 ../overview.md
+/sql
+/database/migrations

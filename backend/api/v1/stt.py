@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import os
 
 import aiofiles
@@ -13,9 +14,12 @@ from dashscope.audio.qwen_omni.omni_realtime import TranscriptionParams
 from fastapi import APIRouter, HTTPException, Body, Response, UploadFile, File, Form, Depends, Query
 
 from api.schemas import resp_200
+from database.models.meeting import MeetingDao, MeetingStatus
 from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
-from database.models.user import User
+from database.models.user import User, UserDao
 from database.schemas.schema import TranscriptionQueryVo, TransUpdate
+from service.meeting_callback import MeetingCallback
+from service.meeting_manager import meeting_manager
 from service.realtime_asr import WebSocketCallback
 from task.tasks import transcription
 from fastapi import WebSocket, WebSocketDisconnect
@@ -155,8 +159,15 @@ async def get_audio2text_task_status(
 @router.websocket("/ws/realtime")
 async def websocket_endpoint(
         websocket: WebSocket,
-        token: Optional[str] = Query(None)
+        token: Optional[str] = Query(None),
+        meeting_id: Optional[str] = Query(None),
 ):
+    """
+    实时语音转写 WebSocket。
+    - 无 meeting_id：单用户模式（向后兼容，消息格式不变）
+    - 有 meeting_id：会议模式（解析 User、加入房间、广播带说话人标签的转写、
+      服务端录制 PCM、路由 WebRTC 信令）
+    """
     # WebSocket 无法返回标准 401，采用自定义关闭码 4401 表示认证失败
     if not token:
         await websocket.accept()
@@ -164,7 +175,7 @@ async def websocket_endpoint(
         logger.warning("🔒 WebSocket 连接因未提供 Token 被拒绝")
         return
     try:
-        decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+        payload = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
     except HTTPException:
         await websocket.accept()
         await websocket.close(code=4401)
@@ -173,18 +184,20 @@ async def websocket_endpoint(
 
     await websocket.accept()
 
-    # 获取当前事件循环，用于在回调中调度任务
-    loop = asyncio.get_running_loop()
+    # 分支：会议模式 vs 单用户模式
+    if meeting_id:
+        await _meeting_websocket_loop(websocket, meeting_id, payload)
+    else:
+        await _single_user_websocket_loop(websocket)
 
-    # 初始化回调，传入 websocket 和 loop
+
+async def _single_user_websocket_loop(websocket: WebSocket):
+    """单用户实时转写（向后兼容原有逻辑与消息格式）。"""
+    loop = asyncio.get_running_loop()
     callback = WebSocketCallback(websocket, loop)
 
-    # 获取 DashScope 配置
     dashscope_config = settings.get_dashscope_config()
     workspace_id = dashscope_config.get("workspace_id", "")
-
-    # 初始化新版 OmniRealtimeConversation
-    # 使用私有端点（需 Workspace ID），无 workspace_id 时回退到默认公共端点
     ws_url = f'wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' if workspace_id else None
     conversation = OmniRealtimeConversation(
         model='qwen3-asr-flash-realtime',
@@ -194,11 +207,8 @@ async def websocket_endpoint(
     )
 
     try:
-        # 建立 WebSocket 连接
         conversation.connect()
         print("Backend: Connected to DashScope, configuring session...")
-
-        # 配置会话：启用转写 + VAD
         conversation.update_session(
             output_modalities=[MultiModality.TEXT],
             enable_input_audio_transcription=True,
@@ -213,10 +223,7 @@ async def websocket_endpoint(
         print("Backend: Session configured, waiting for audio...")
 
         while True:
-            # 接收前端发送的二进制音频帧 (bytes)
             data = await websocket.receive_bytes()
-
-            # 如果接收到数据，base64 编码后发送给 DashScope
             if data:
                 audio_b64 = base64.b64encode(data).decode('ascii')
                 conversation.append_audio(audio_b64)
@@ -228,10 +235,155 @@ async def websocket_endpoint(
     except Exception as e:
         print(f"Error: {e}")
     finally:
-        # 清理资源
         try:
             conversation.end_session()
         except Exception:
             pass
         conversation.close()
         print("Recognizer stopped.")
+
+
+async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_payload: dict):
+    """会议模式实时转写：加入房间、广播带说话人标签的转写、录制 PCM、路由 WebRTC 信令。"""
+    # 1. 从 token 解析用户身份
+    user_id = token_payload.get("user_id")
+    if user_id is None:
+        await websocket.close(code=4401)
+        logger.warning("🔒 会议 WS: token 中无 user_id")
+        return
+    user = UserDao.get_by_id(user_id)
+    if not user:
+        await websocket.close(code=4401)
+        logger.warning(f"🔒 会议 WS: 用户不存在 user_id={user_id}")
+        return
+
+    # 2. 校验会议存在且进行中
+    meeting = MeetingDao.get_by_id(m_id=meeting_id, user_id=user_id)
+    if not meeting:
+        # 用户不在 user_ids 中，尝试自动加入（主持人创建时已含，此处兜底）
+        meeting = MeetingDao.get_by_id(m_id=meeting_id)
+        if not meeting:
+            await websocket.close(code=4404)
+            logger.warning(f"🔒 会议 WS: 会议不存在 meeting_id={meeting_id}")
+            return
+        MeetingDao.add_participant(meeting_id, user_id)
+        meeting = MeetingDao.get_by_id(m_id=meeting_id, user_id=user_id)
+
+    if meeting.status != MeetingStatus.ACTIVE.value:
+        await websocket.close(code=4403)
+        logger.warning(f"🔒 会议 WS: 会议已结束 meeting_id={meeting_id}")
+        return
+
+    loop = asyncio.get_running_loop()
+    username = user.username
+
+    # 3. 创建 DashScope 会话 + 会议回调
+    dashscope_config = settings.get_dashscope_config()
+    workspace_id = dashscope_config.get("workspace_id", "")
+    ws_url = f'wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' if workspace_id else None
+    callback = MeetingCallback(
+        manager=meeting_manager,
+        meeting_id=meeting_id,
+        user_id=user_id,
+        username=username,
+    )
+    conversation = OmniRealtimeConversation(
+        model='qwen3-asr-flash-realtime',
+        callback=callback,
+        api_key=dashscope_config.get("api_key"),
+        url=ws_url,
+    )
+
+    try:
+        conversation.connect()
+        conversation.update_session(
+            output_modalities=[MultiModality.TEXT],
+            enable_input_audio_transcription=True,
+            transcription_params=TranscriptionParams(
+                language='zh',
+                sample_rate=16000,
+                input_audio_format="pcm"
+            ),
+            enable_turn_detection=True,
+            turn_detection_type='server_vad'
+        )
+        logger.info(f"[Meeting] DashScope 会话已就绪: meeting={meeting_id} user={username}")
+
+        # 4. 加入房间（开 PCM 录音文件、记 join_offset）
+        meeting_manager.add_participant(
+            meeting_id=meeting_id,
+            websocket=websocket,
+            user_id=user_id,
+            username=username,
+            conversation=conversation,
+            loop=loop,
+        )
+
+        # 向新加入者发送当前房间已有参与者列表
+        # （解决竞态：后加入者可能错过之前的 participant_joined 广播）
+        current_participants = meeting_manager.get_participants(meeting_id)
+        await websocket.send_json({
+            "type": "participants_list",
+            "participants": current_participants,
+        })
+
+        # 广播加入事件给其他参会者
+        meeting_manager.broadcast_participant_event(meeting_id, user_id, username, joined=True)
+
+        # 5. 接收循环：同时处理二进制(音频)和文本(信令)
+        while True:
+            msg = await websocket.receive()
+
+            # 处理断连消息（前端 ws.close() 触发），避免下次 receive() 抛 RuntimeError
+            if msg.get("type") == "websocket.disconnect":
+                break
+
+            if "bytes" in msg:
+                data = msg["bytes"]
+                if data:
+                    audio_b64 = base64.b64encode(data).decode('ascii')
+                    conversation.append_audio(audio_b64)
+                    # 同时写入 PCM 录音文件
+                    meeting_manager.write_audio_chunk(meeting_id, user_id, data)
+                else:
+                    break
+
+            elif "text" in msg:
+                text_msg = msg["text"]
+                try:
+                    signal = json.loads(text_msg)
+                    to_user_id = signal.get("to_user_id")
+                    signal_type = signal.get("signal_type")  # offer / answer / ice
+                    signal_data = signal.get("data")
+                    if to_user_id is not None and signal_type:
+                        meeting_manager.route_signal(
+                            meeting_id, user_id, username,
+                            to_user_id, signal_type, signal_data
+                        )
+                except json.JSONDecodeError:
+                    logger.warning(f"[Meeting] 无效信令消息: {text_msg[:200]}")
+
+    except WebSocketDisconnect:
+        logger.info(f"[Meeting] 参会者断开: meeting={meeting_id} user={username}")
+    except RuntimeError as e:
+        # Starlette: 前端正常 ws.close() 后，下一次 receive() 抛出 RuntimeError，属正常断连
+        logger.info(f"[Meeting] 参会者断开 (Normal close): meeting={meeting_id} user={username}, {e}")
+    except Exception as e:
+        logger.error(f"[Meeting] WS 异常: meeting={meeting_id} user={username}, {e!r}")
+    finally:
+        # 6. 清理：移除参会者、关 PCM、关 DashScope、广播离开
+        #    is_last 表示该参会者离开后房间是否已空
+        # 注意：broadcast_participant_event 对已离开的参会者不生效，
+        # 但仍有重要作用：告知剩余参会者有人离开。
+        conn, is_last = meeting_manager.remove_participant(meeting_id, user_id)
+        if is_last:
+            # 最后一人离开：自动结束会议（合并录音 → OSS 上传 → 触发转录任务）
+            logger.info(f"[Meeting] 最后一名参会者离开，自动结束会议: meeting={meeting_id}")
+            try:
+                # 延迟导入避免循环依赖（stt ↔ meeting 在 __init__.py 中互相依赖）
+                from api.v1.meeting import auto_end_meeting
+                await auto_end_meeting(meeting_id)
+            except Exception:
+                logger.exception(f"[Meeting] 自动结束会议失败: meeting={meeting_id}")
+        else:
+            logger.info(f"[Meeting] 参会者 {username} 离开，房间仍有其他参会者: meeting={meeting_id}")
