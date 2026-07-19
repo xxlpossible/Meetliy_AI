@@ -4,6 +4,7 @@
 路由前缀 /api/v1/meeting（router.py 的 /api/v1 + 本文件 /meeting）。
 """
 import asyncio
+import os
 import uuid
 from typing import Optional
 
@@ -15,7 +16,7 @@ from api.schemas import resp_200
 from database.models.meeting import Meeting, MeetingDao, MeetingStatus
 from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
 from database.models.user import User, UserDao
-from service.meeting_manager import meeting_manager
+from service.meeting_manager import meeting_manager, AUDIO_DIR
 from service import audio_merger
 from task.tasks import transcription
 from utils.dependencies import get_current_user
@@ -199,7 +200,6 @@ async def _execute_end_meeting(
         public_url = TmpFilesUploader.upload_from_temp_path(temp_path=merged_path)
         # 清理合并后的 mp3（PCM 原始文件保留排查）
         try:
-            import os
             os.remove(merged_path)
         except Exception:
             pass
@@ -212,6 +212,9 @@ async def _execute_end_meeting(
         MeetingDao.update_status(meeting_id, MeetingStatus.ERROR.value)
         raise HTTPException(status_code=500, detail=f"音频处理失败: {e}")
 
+    # 上传成功后，删除所有 PCM 原始音频文件（mp3 已上传到 OSS 并保存 URL）
+    _cleanup_pcm_files(meeting_id, participants_info)
+
     # 4. 创建 Transcription 记录（全体参会者有权访问）
     t_id = uuid.uuid4().hex
     TranscriptionDao.add(Transcription(
@@ -221,6 +224,7 @@ async def _execute_end_meeting(
         status=Status.PENDING.value,
         task_result=None,
         is_delete=Delete.NOT.value,
+        file_url=public_url,
     ))
 
     # 5. 触发 Celery 转录任务
@@ -234,6 +238,22 @@ async def _execute_end_meeting(
     # 7. 广播会议结束（此时连接可能已被 end_meeting 关闭，尽力发送）
     meeting_manager.broadcast_meeting_ended(meeting_id, t_id)
     return t_id
+
+
+def _cleanup_pcm_files(meeting_id: str, participants_info: list):
+    """
+    会议结束后清理本地 PCM 录音文件。
+    合并后的 mp3 已上传 OSS（URL 保存在 Transcription.file_url），无需保留本地原始 PCM。
+    audio_merger.merge 内部已清理其生成的临时 WAV 文件，此处只清理服务端录音的 PCM 文件。
+    """
+    for p in participants_info:
+        pcm_path = p.get("audio_file_path")
+        if pcm_path and os.path.exists(pcm_path):
+            try:
+                os.remove(pcm_path)
+                logger.info(f"已删除 PCM 文件: {pcm_path}")
+            except Exception as e:
+                logger.warning(f"删除 PCM 文件失败: {pcm_path}, {e}")
 
 
 @router.get("/list", summary="我的会议列表")

@@ -38,6 +38,11 @@ class TranscriptionBase(SQLModel):
     is_delete: Optional[int] = Field(default=Delete.NOT.value)
     realtime_asr_text: Optional[str] = Field(default=None)
     note: Optional[str] = Field(default=None)
+    # 会议合并后音频文件的 OSS 公网下载地址（mp3 已上传至 OSS，本地不保留）
+    file_url: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(1024), nullable=True, comment="OSS合并音频公网URL")
+    )
     create_time: Optional[datetime] = Field(sa_column=Column(
         DateTime, nullable=False, index=True, server_default=text('CURRENT_TIMESTAMP')))
     update_time: Optional[datetime] = Field(

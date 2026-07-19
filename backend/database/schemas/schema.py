@@ -101,4 +101,37 @@ class RefreshTokenRequest(SQLModel):
     refresh_token: str = Field(description="登录时签发的 Refresh Token")
 
 
+# ----------------------------- 知识库（Knowledge）请求体 ----------------------------- #
+
+class KnowledgeCreate(SQLModel):
+    """创建知识库请求体"""
+    name: str = Field(min_length=1, max_length=128, description="知识库名称")
+    description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
+
+
+class KnowledgeUpdate(SQLModel):
+    """更新知识库请求体"""
+    knowledge_id: str = Field(..., description="知识库ID")
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128, description="知识库名称")
+    description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
+
+
+class KnowledgeQuery(SQLModel):
+    """知识库列表查询请求体"""
+    page_num: int = Field(default=1, ge=1, description="页码")
+    page_size: int = Field(default=10, ge=1, le=100, description="每页数量")
+    name: Optional[str] = Field(default=None, description="按名称模糊搜索（可选）")
+
+
+class KnowledgeGrant(SQLModel):
+    """知识库放权请求体：给指定用户追加访问权限"""
+    knowledge_id: str = Field(..., description="知识库ID")
+    user_id: int = Field(..., description="要授予权限的用户ID")
+
+
+class KnowledgeDelete(SQLModel):
+    """知识库删除请求体"""
+    knowledge_id: str = Field(..., description="要删除的知识库ID")
+
+
 

@@ -20,6 +20,7 @@ import asyncio
 router = APIRouter(prefix='/chat', tags=['chat'])
 
 
+# 该接口已经弃用，使用下面的WebSocket接口进行AI对话
 @router.post('/question', summary="用户提问")
 async def user_qa(body: UserQA, current_user: User = Depends(get_current_user)):
     task_id = body.task_id
