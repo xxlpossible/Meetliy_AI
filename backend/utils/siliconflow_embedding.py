@@ -102,9 +102,22 @@ class ChromaDBManager:
         )
         logger.info(f"成功存入 {len(documents)} 条文档")
 
-    def search(self, collection_name: str, query_text: str, n_results: int = 5) -> Dict[str, Any]:
+    def search(
+        self,
+        collection_name: str,
+        query_text: str,
+        n_results: int = 5,
+        where: Optional[Dict] = None
+    ) -> Dict[str, Any]:
         """
         向量查询
+        
+        Args:
+            collection_name: 集合名称
+            query_text: 查询文本
+            n_results: 返回结果数量
+            where: 可选， metadata 过滤条件（ChromaDB where 语法）
+                   例如 {"session_id": "xxx"} 或 {"$or": [{"role": "user"}, {"role": "assistant"}]}
         """
         # 1. 将查询词转换为向量
         query_embedding = self.embedding_tool.get_embeddings([query_text])[0]
@@ -112,15 +125,20 @@ class ChromaDBManager:
         collection = self.get_or_create_collection(collection_name)
 
         # 2. 在 ChromaDB 中进行向量搜索
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            include=["documents", "metadatas", "distances"]
-        )
+        query_params = {
+            "query_embeddings": [query_embedding],
+            "n_results": n_results,
+            "include": ["documents", "metadatas", "distances"]
+        }
+        # 如果有 where 条件，加入查询参数
+        if where is not None:
+            query_params["where"] = where
+            
+        results = collection.query(**query_params)
         return results
 
     def get_by_file_id_and_knowledge_id(self, file_id: str, knowledge_id: str):
-        collection_name = f"collection_{knowledge_id}"
+        collection_name = f"collection_kb_{knowledge_id}"
         collection = self.get_or_create_collection(collection_name)
         results = collection.get(
             where={"file_id": file_id},
@@ -133,7 +151,7 @@ class ChromaDBManager:
         """
         根据 file_id 删除指定知识库中的所有相关向量片段
         """
-        collection_name = f"collection_{knowledge_id}"
+        collection_name = f"collection_kb_{knowledge_id}"
         # 获取集合（如果集合不存在，get_or_create 也没问题，但通常删除时集合应该存在）
         try:
             collection = self.client.get_collection(collection_name)

@@ -24,20 +24,25 @@ class UserTempQA(SQLModel):
 
 
 class ChatMessageQuery(SQLModel):
-    task_id: Optional[str] = Field(default=None)
-    page_size: Optional[int] = Field(default=10)
-    page_num: Optional[int] = Field(default=1)
+    """聊天记录列表查询请求体"""
+    session_id: Optional[str] = Field(default=None, description="会话ID")
+    page_size: Optional[int] = Field(default=10, description="每页数量")
+    page_num: Optional[int] = Field(default=1, description="页码")
 
 
 class ChatMessageAdd(SQLModel):
-    task_id: Optional[str]
-    chat_messages: Optional[List[str]]
+    """添加聊天记录请求体 - 单条消息"""
+    session_id: Optional[str] = Field(default=None, description="会话ID")
+    role: Optional[str] = Field(default=None, description="消息角色: user / assistant")
+    content: Optional[str] = Field(default=None, description="消息内容")
+    turn_index: Optional[int] = Field(default=0, description="会话内轮次序号")
     user_id: Optional[int] = Field(default=None)
 
 
 class ChatMessageUpdate(SQLModel):
-    chat_messages: Optional[List[str]]
-    chat_id: Optional[str]
+    """更新聊天记录请求体"""
+    content: Optional[str] = Field(default=None, description="消息内容")
+    chat_id: Optional[int] = Field(default=None, description="聊天记录ID")
 
 
 class TransUpdate(SQLModel):
@@ -107,6 +112,7 @@ class KnowledgeCreate(SQLModel):
     """创建知识库请求体"""
     name: str = Field(min_length=1, max_length=128, description="知识库名称")
     description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
+    accept_users: Optional[List[int]] = Field(default=None, description="有权限访问该知识库的用户ID列表，默认只有创建者有权限")
 
 
 class KnowledgeUpdate(SQLModel):
@@ -129,9 +135,12 @@ class KnowledgeGrant(SQLModel):
     user_id: int = Field(..., description="要授予权限的用户ID")
 
 
+class KnowledgeGrantBatch(SQLModel):
+    """知识库批量放权请求体：一次性给多个用户追加访问权限"""
+    knowledge_id: str = Field(..., description="知识库ID")
+    user_ids: List[int] = Field(..., description="要授予权限的用户ID列表")
+
+
 class KnowledgeDelete(SQLModel):
     """知识库删除请求体"""
     knowledge_id: str = Field(..., description="要删除的知识库ID")
-
-
-

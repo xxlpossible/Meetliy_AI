@@ -1,20 +1,15 @@
 import dotenv
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from api.router import router
-from database.check_points import CheckpointerManager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    # AsyncSqliteSaver 需在事件循环中初始化，故 init/close 均为 async 方法
-    await CheckpointerManager.init()
-
     yield
-
-    await CheckpointerManager.close()
 
 
 def create_app():
@@ -32,7 +27,8 @@ def create_app():
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost",
-        "http://127.0.0.1"
+        "http://127.0.0.1",
+        "http://192.168.11.210:31818"
     ]
 
     # ✅ 先加中间件（虽然顺序在这里影响不大，但推荐尽早）
@@ -44,6 +40,13 @@ def create_app():
         allow_headers=["*"],
     )
     fastapi_app.include_router(router)
+
+    # 挂载前端测试页面到 /test 路径，便于通过 http://localhost:31818/test/ 访问
+    # 同源访问无 CORS 问题
+    # frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend_test")
+    # if os.path.isdir(frontend_dir):
+    #     fastapi_app.mount("/test", StaticFiles(directory=frontend_dir), name="frontend_test")
+
     return fastapi_app
 
 

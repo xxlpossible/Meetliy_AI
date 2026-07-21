@@ -29,8 +29,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def _ensure_knowledge(knowledge_id: str, user: User) -> str:
     """
     确保知识库存在且当前用户有权访问。
-    - knowledge_id 为空：自动生成并创建知识库（user_ids=[当前用户]）。
-    - knowledge_id 对应知识库不存在：创建并绑定当前用户。
+    - knowledge_id 为空：自动生成并创建知识库（user_ids=[当前用户]），同时创建 Chroma 集合。
+    - knowledge_id 对应知识库不存在：创建并绑定当前用户，同时创建 Chroma 集合。
     - 已存在但当前用户无权：抛 403。
     返回有效的 knowledge_id。
     """
@@ -41,12 +41,19 @@ def _ensure_knowledge(knowledge_id: str, user: User) -> str:
         return knowledge_id
     # 查不到，判断是不存在还是无权
     if KnowledgeDao.get_by_id(k_id=knowledge_id) is None:
-        # 不存在，创建
+        # 不存在，创建知识库
         KnowledgeDao.add(Knowledge(
             id=knowledge_id,
             name=knowledge_id,
             user_ids=[user.id],
         ))
+        # 在 Chroma 中创建知识库对应的向量集合
+        try:
+            collection_name = f"collection_kb_{knowledge_id}"
+            db_manager.get_or_create_collection(name=collection_name)
+            logger.info(f"知识库向量集合创建成功，集合名称：{collection_name}")
+        except Exception as e:
+            logger.error(f"知识库向量集合创建失败: {e}", exc_info=True)
         return knowledge_id
     # 存在但无权
     raise HTTPException(status_code=403, detail="无权访问该知识库")

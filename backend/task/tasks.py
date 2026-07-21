@@ -4,7 +4,6 @@ import os
 from loguru import logger
 
 from database.models.transcription import TranscriptionDao, Status
-from database.models.knowledge import Knowledge, KnowledgeDao
 from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, FileState, KnowledgeType
 from langchain_pipeline.agent import MeetingAgent
 from utils.siliconflow_embedding import db_manager
@@ -20,6 +19,7 @@ def transcription(
         public_url: str = None,
         t_id: str = None
 ):
+    """语音转录后台任务"""
     try:
         # 取得对应任务
         task = TranscriptionDao.get_by_id(t_id=t_id)
@@ -33,16 +33,17 @@ def transcription(
             task.status = Status.COMPLETE.value
             task.task_result = result
         elif result.get('status') == 'complete_with_errors':
-            logger.error(f"后台任务执失败，执行过程出错，报错信息：{result.get('error_message', 'ERROR')}")
+            logger.error(f"后台任务执行失败，执行过程出错，报错信息：{result.get('error_message', 'ERROR')}")
             task.status = Status.ERROR.value
 
         # 对数据库进行更新
         TranscriptionDao.update(task)
         if result.get('status') == 'complete':
-            # 将识别结果转换为向量 并创建集合 存入向量数据库
-            collection_name = f"collection_{t_id}"
+            # 将识别结果转换为向量 并创建会议专用集合
+            # 集合命名为 collection_meeting_{t_id}，与知识库集合 collection_kb_{knowledge_id} 分开存储
+            collection_name = f"collection_meeting_{t_id}"
             db_manager.get_or_create_collection(name=collection_name)
-            logger.info(f"集合创建成功，集合名称：{collection_name}")
+            logger.info(f"会议内容集合创建成功，集合名称：{collection_name}")
             # 结果向量化
             complete_text = result.get('complete_text', "")
             sentences = result.get('sentences', [])
@@ -53,30 +54,11 @@ def transcription(
             chunk_page_contents = [chunk.page_content for chunk in chunks]
             sentences.extend(chunk_page_contents)
 
-            logger.info("开始将数据存入集合")
+            logger.info("开始将会议内容存入集合")
             db_manager.add_documents(
                 collection_name=collection_name,
                 documents=sentences
             )
-
-            # 创建 Knowledge 知识库实体，使会议文本集合有元信息归属与权限控制。
-            # knowledge_id 与 task_id 一致（collection_{t_id} 对应此知识库），
-            # user_ids 继承自转录任务（会议参与者在 upload 时已绑定），保证有权用户可访问。
-            if KnowledgeDao.get_by_id(k_id=t_id) is None:
-                KnowledgeDao.add(Knowledge(
-                    id=t_id,
-                    name=task.task_name or f"会议转录-{t_id[:8]}",
-                    description="语音转录任务完成后自动生成的会议知识库",
-                    user_ids=list(task.user_ids or []),
-                ))
-                logger.info(f"Knowledge 知识库实体已创建，id={t_id}")
-            else:
-                # 已存在则同步更新 user_ids（转录任务可能后续放权）
-                existing = KnowledgeDao.get_by_id(k_id=t_id)
-                existing.user_ids = list(task.user_ids or [])
-                existing.name = task.task_name or existing.name
-                KnowledgeDao.update(existing)
-                logger.info(f"Knowledge 知识库实体已更新，id={t_id}")
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
 
@@ -101,7 +83,7 @@ def parse_knowledge_file(
 
     :param file_path: 持久化上传目录中的文件绝对路径，任务结束后由本任务删除
     :param file_suffix: 文件扩展名（不含点），如 pdf / docx / mp3
-    :param knowledge_id: 知识库ID，对应 ChromaDB 集合名 collection_{knowledge_id}
+    :param knowledge_id: 知识库ID，对应 ChromaDB 集合名 collection_kb_{knowledge_id}
     :param file_id: 文件ID，KnowledgeFile 记录主键，用于回写解析状态
     """
     logger.info(f"[知识库解析] 开始 file_id={file_id}, knowledge_id={knowledge_id}, suffix={file_suffix}")
@@ -138,7 +120,7 @@ def parse_knowledge_file(
         # 向量入库
         db_manager.add_documents(
             metadatas=metadata_list,
-            collection_name=f"collection_{knowledge_id}",
+            collection_name=f"collection_kb_{knowledge_id}",
             documents=content_list,
             ids=[f"{file_id}_{i}" for i in range(len(content_list))]
         )
