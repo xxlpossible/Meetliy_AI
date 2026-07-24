@@ -38,6 +38,24 @@ def transcription(
 
         # 对数据库进行更新
         TranscriptionDao.update(task)
+
+        # 转录任务完成后，同步更新关联的 Meeting 状态
+        from database.models.meeting import MeetingDao, MeetingStatus
+        meeting = MeetingDao.get_by_task_id(t_id)
+        if meeting:
+            if result.get('status') == 'complete':
+                MeetingDao.update_status(meeting.id, MeetingStatus.FINISH.value)
+                logger.info(f"会议 {meeting.id} 转录完成，状态更新为 FINISH")
+            elif result.get('status') == 'complete_with_errors':
+                MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
+                logger.error(f"会议 {meeting.id} 转录异常，状态更新为 ERROR")
+            else:
+                # 未知状态也标为 ERROR
+                MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
+                logger.error(f"会议 {meeting.id} 转录返回未知状态，状态更新为 ERROR")
+        else:
+            logger.warning(f"task_id={t_id} 未找到关联的 Meeting 记录，跳过状态更新")
+
         if result.get('status') == 'complete':
             # 将识别结果转换为向量 并创建会议专用集合
             # 集合命名为 collection_meeting_{t_id}，与知识库集合 collection_kb_{knowledge_id} 分开存储
@@ -61,6 +79,19 @@ def transcription(
             )
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
+        # 任务执行异常时，将 Transcription 和关联的 Meeting 都标为 ERROR
+        try:
+            task = TranscriptionDao.get_by_id(t_id=t_id)
+            if task:
+                task.status = Status.ERROR.value
+                TranscriptionDao.update(task)
+            from database.models.meeting import MeetingDao, MeetingStatus
+            meeting = MeetingDao.get_by_task_id(t_id)
+            if meeting:
+                MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
+                logger.info(f"会议 {meeting.id} 转录任务异常，状态更新为 ERROR")
+        except Exception as update_err:
+            logger.error(f"更新失败状态时出错: {update_err}")
 
 
 @celery_app.task

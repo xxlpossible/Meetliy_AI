@@ -12,9 +12,9 @@ from sqlalchemy.sql import func
 
 
 class Status(IntEnum):
-    ERROR = -1  # 解析错误
     PENDING = 0  # 正在解析
     COMPLETE = 1  # 解析完成
+    ERROR = -1  # 解析错误
 
 
 class Delete(IntEnum):

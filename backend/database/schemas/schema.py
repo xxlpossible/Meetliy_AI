@@ -39,6 +39,15 @@ class ChatMessageAdd(SQLModel):
     user_id: Optional[int] = Field(default=None)
 
 
+class ChatSSERequest(SQLModel):
+    """SSE 流式聊天请求体"""
+    question: str = Field(..., description="用户问题")
+    session_id: str = Field(..., description="会话ID")
+    task_ids: Optional[List[str]] = Field(default=None, description="会议任务ID列表")
+    need_kb: Optional[bool] = Field(default=False, description="是否查询知识库")
+    knowledge_ids: Optional[List[str]] = Field(default=None, description="知识库ID列表")
+
+
 class ChatMessageUpdate(SQLModel):
     """更新聊天记录请求体"""
     content: Optional[str] = Field(default=None, description="消息内容")
@@ -120,6 +129,7 @@ class KnowledgeUpdate(SQLModel):
     knowledge_id: str = Field(..., description="知识库ID")
     name: Optional[str] = Field(default=None, min_length=1, max_length=128, description="知识库名称")
     description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
+    accept_users: Optional[List[int]] = Field(default=None, description="有权限访问该知识库的用户ID列表（全量替换，创建者不存入）")
 
 
 class KnowledgeQuery(SQLModel):
@@ -127,18 +137,6 @@ class KnowledgeQuery(SQLModel):
     page_num: int = Field(default=1, ge=1, description="页码")
     page_size: int = Field(default=10, ge=1, le=100, description="每页数量")
     name: Optional[str] = Field(default=None, description="按名称模糊搜索（可选）")
-
-
-class KnowledgeGrant(SQLModel):
-    """知识库放权请求体：给指定用户追加访问权限"""
-    knowledge_id: str = Field(..., description="知识库ID")
-    user_id: int = Field(..., description="要授予权限的用户ID")
-
-
-class KnowledgeGrantBatch(SQLModel):
-    """知识库批量放权请求体：一次性给多个用户追加访问权限"""
-    knowledge_id: str = Field(..., description="知识库ID")
-    user_ids: List[int] = Field(..., description="要授予权限的用户ID列表")
 
 
 class KnowledgeDelete(SQLModel):

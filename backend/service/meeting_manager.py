@@ -282,7 +282,7 @@ class MeetingManager:
 
     def broadcast_meeting_ended(self, meeting_id: str, task_id: str):
         """广播会议结束事件。"""
-        message = {"type": "meeting_ended", "task_id": task_id}
+        message = {"type": "meeting_ended", "meeting_id": meeting_id, "task_id": task_id}
         with self._rooms_lock:
             room = self._rooms.get(meeting_id)
             participants = list(room.participants.values()) if room else []

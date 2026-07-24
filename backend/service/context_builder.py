@@ -7,7 +7,7 @@
 - 会议内容（从 Chroma meeting 集合检索）      —— [MEETING_CONTENT]
 - 知识库片段（从 Chroma knowledge 集合检索）  —— [Evidence]
 - 最近历史对话（内存中提取，仅保留近 3 轮）   —— [Context]
-- 过往记忆（从 Chroma 检索，排除近 3 轮）    —— [Context] 中的「记忆:」行
+- 过往记忆（从 Chroma 检索，排除近 3 轮）    —— [Context]
 
 同时负责把会话中的每条聊天记录（单条输入或输出）同步写入 MySQL 与 Chroma 向量库，
 Chroma 的 metadata 中必须包含 session_id / user_id / time / role / turn_index 信息。
@@ -62,7 +62,7 @@ def _seed_history_from_db(session_id: str) -> None:
         max_idx = ChatMessageDao.get_max_turn_index(session_id)
         _SESSION_TURN_COUNTERS[session_id] = (max_idx + 1) if max_idx is not None else 0
         logger.info(
-            f"📥 会话 {session_id} 历史已加载：{len(rows)} 条消息，"
+            f"📥 加载会话历史 {session_id} 已加载：{len(rows)} 条消息，"
             f"turn_index 从 {_SESSION_TURN_COUNTERS[session_id]} 继续"
         )
     except Exception as e:
@@ -106,6 +106,46 @@ def _memory_collection(user_id: int) -> str:
     return f"chat_memory_{user_id}"
 
 
+def _estimate_tokens(text: str) -> int:
+    """
+    估算文本的 token 数。
+    对于中文：大约 1 个字符 = 1-2 个 token
+    对于英文：大约 1 个单词 = 1-1.5 个单词
+    这里采用保守估算：中文字符数 + 英文单词数 * 1.5
+    """
+    chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    # 非中文字符按空格分词估算英文单词
+    non_chinese = ''.join(c if not ('\u4e00' <= c <= '\u9fff') else ' ' for c in text)
+    english_words = len(non_chinese.split())
+    return chinese_chars + int(english_words * 1.5)
+
+
+def _truncate_for_embedding(text: str, max_tokens: int = 8192, safety_margin: float = 0.8) -> str:
+    """
+    如果文本超过 embedding 模型的 token 限制，截断到安全范围内。
+    
+    Args:
+        text: 原始文本
+        max_tokens: 模型支持的最大 token 数
+        safety_margin: 安全系数，默认 80%，留出余量
+    
+    Returns:
+        截断后的文本（如果未超限则返回原文）
+    """
+    estimated = _estimate_tokens(text)
+    limit = int(max_tokens * safety_margin)
+    
+    if estimated <= limit:
+        return text
+    
+    # 按字符截断（保守策略：1 中文字符 ≈ 1 token）
+    truncated = text[:limit]
+    logger.warning(
+        f"⚠️Embedding模型输入限制: 文本 token 超限(估计 {estimated} > {limit}), 已截断至 {limit} 字符"
+    )
+    return truncated
+
+
 def persist_chat_message(
     session_id: str,
     user_id: int,
@@ -134,15 +174,19 @@ def persist_chat_message(
             )
         )
     except Exception as e:
-        logger.error(f"❌ MySQL 写入聊天记录失败(session={session_id}): {e}", exc_info=True)
+        logger.error(f"❌ MySQL 写入聊天记录失败(session={session_id}), 错误原因: {e}")
 
     # 2) Chroma —— 向量化存储，作为「过往记忆」供后续跨会话检索
     try:
         # 格式：[role]: content，便于检索时直接展示对话角色和内容
         formatted_content = f"[{role}]: {content}"
+        
+        # 检查并截断超限文本（embedding 模型限制 8192 tokens）
+        safe_content = _truncate_for_embedding(formatted_content)
+        
         db_manager.add_documents(
             collection_name=_memory_collection(user_id),
-            documents=[formatted_content],
+            documents=[safe_content],
             metadatas=[{
                 "session_id": session_id,
                 "user_id": str(user_id),
@@ -153,7 +197,7 @@ def persist_chat_message(
             ids=[uuid.uuid4().hex],
         )
     except Exception as e:
-        logger.error(f"❌ Chroma 写入聊天记忆失败(user={user_id}): {e}", exc_info=True)
+        logger.error(f"❌ Chroma 写入聊天记忆失败(user={user_id}), 错误原因: {e}")
 
 
 def retrieve_past_memory(
@@ -181,13 +225,16 @@ def retrieve_past_memory(
         过往记忆文本列表
     """
     # 构建 where 条件
-    where: Dict[str, Any] = {"session_id": session_id}
+    # 注意：ChromaDB 多条件必须用 $and 显式组合，不支持隐式 AND
+    conditions: list = [{"session_id": session_id}]
     
     # 排除近 3 轮：SESSION_HISTORY 覆盖 [cutoff, current_turn_index)
     # 所以只检索 turn_index < cutoff 的消息
     cutoff = current_turn_index - 5
     if cutoff > 0:
-        where["turn_index"] = {"$lt": cutoff}
+        conditions.append({"turn_index": {"$lt": cutoff}})
+    
+    where: Dict[str, Any] = {"$and": conditions} if len(conditions) > 1 else conditions[0]
     
     try:
         result = db_manager.search(

@@ -10,10 +10,9 @@ LangGraph 对话工作流
 """
 from typing import List, Dict, Tuple
 
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from langchain.chat_models import init_chat_model
-from langchain_core.prompts import ChatPromptTemplate
 from typing_extensions import TypedDict, Annotated
 import operator
 from loguru import logger
@@ -108,12 +107,9 @@ class ChatAgent:
         
         logger.info(f"✅ 构建上下文完成，session_id={session_id}, user_id={user_id}")
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("user", full_prompt)
-        ])
-
-        prompt_value = prompt.invoke({})
-        llm_message = self.model.invoke(prompt_value)
+        # 使用 HumanMessage 直接构造，避免 ChatPromptTemplate 将 full_prompt 中的
+        # {xxx} 文本（如代码片段、日志格式等）误解析为模板变量
+        llm_message = self.model.invoke([HumanMessage(content=full_prompt)])
         logger.info("✅ 调用大模型完成")
         
         return {
@@ -287,7 +283,8 @@ async def _search_and_rerank_knowledge_base(
             collection_docs=collection_docs,
             top_k=top_k
         )
-        return "\n".join(reranked)
+        reranked_text = [item.get('text') for item in reranked]
+        return "\n".join(reranked_text)
     except Exception as e:
         logger.error(f"知识库内容重排序失败: {e}")
         # 失败时返回所有文档的前 top_k 条
@@ -297,8 +294,7 @@ async def _search_and_rerank_knowledge_base(
         return "\n".join(all_docs[:top_k])
 
 
-async def stream_chat_answer(
-    websocket: WebSocket,
+async def stream_chat_messages(
     question: str,
     session_id: str,
     user_id: int = 0,
@@ -307,23 +303,11 @@ async def stream_chat_answer(
     knowledge_ids: List[str] = None
 ):
     """
-    WebSocket 对话业务编排：
-    用户输入 -> 多集合搜索（会议/知识库/记忆） -> 统一重排 -> 构建上下文 -> 流式生成 -> 存储消息
-    
-    消息协议：
+    产出消息协议（与 WebSocket / SSE 共用）：
         - {"status": "start",    "question": "..."}           开始生成
         - {"status": "streaming", "text": "token 片段"}        逐 token 推送
         - {"status": "done",      "text": "完整回答"}          生成完成
         - {"status": "error",     "message": "错误信息"}        异常
-    
-    Args:
-        websocket: FastAPI WebSocket 连接
-        question:  用户本轮问题
-        session_id: 会话 ID（用于聊天记录存储和上下文管理）
-        user_id:   用户 ID
-        task_ids:  会议任务ID列表（对应集合 collection_meeting_{id}）
-        need_kb:   是否查询知识库
-        knowledge_ids: 知识库ID列表（对应集合 collection_kb_{id}）
     """
     task_ids = task_ids or []
     knowledge_ids = knowledge_ids or []
@@ -345,8 +329,8 @@ async def stream_chat_answer(
         try:
             meeting_text = await _search_and_rerank_meeting(question, task_ids, top_k=5)
         except Exception as e:
-            logger.error(f"搜索会议内容失败: {e}", exc_info=True)
-            await websocket.send_json({"status": "error", "message": f"搜索会议内容失败: {e}"})
+            logger.error("搜索会议内容失败", exc_info=True)
+            yield {"status": "error", "message": f"搜索会议内容失败: {e}"}
             return
 
     # === 2. 从多集合收集知识库内容并重排序 ===
@@ -355,17 +339,17 @@ async def stream_chat_answer(
         try:
             kb_text = await _search_and_rerank_knowledge_base(question, knowledge_ids, top_k=5)
         except Exception as e:
-            logger.error(f"搜索知识库内容失败: {e}", exc_info=True)
-            await websocket.send_json({"status": "error", "message": f"搜索知识库内容失败: {e}"})
+            logger.error("搜索知识库内容失败", exc_info=True)
+            yield {"status": "error", "message": f"搜索知识库内容失败: {e}"}
             return
 
     # 如果没有会议内容也没有知识库内容，返回提示
     if not meeting_text and not kb_text:
-        await websocket.send_json({"status": "error", "message": "未找到相关会议内容或知识库片段"})
+        yield {"status": "error", "message": "未找到相关会议内容或知识库片段"}
         return
 
     # === 3. 通知前端开始流式回答 ===
-    await websocket.send_json({"status": "start", "question": question})
+    yield {"status": "start", "question": question}
 
     # === 4. LangGraph 流式生成回答 ===
     full_answer_parts: List[str] = []
@@ -374,7 +358,7 @@ async def stream_chat_answer(
             question, meeting_text, kb_text, session_id=session_id, user_id=user_id, turn_index=user_turn_index
         ):
             full_answer_parts.append(chunk)
-            await websocket.send_json({"status": "streaming", "text": chunk})
+            yield {"status": "streaming", "text": chunk}
 
         full_answer = "".join(full_answer_parts)
         
@@ -389,14 +373,40 @@ async def stream_chat_answer(
             turn_index=assistant_turn_index,
         )
         
-        await websocket.send_json({
+        yield {
             "status": "done",
             "text": full_answer
-        })
+        }
     except Exception as e:
-        logger.error(f"❌ 流式生成回答失败: {e}", exc_info=True)
-        await websocket.send_json({
+        logger.error(f"❌ 流式生成回答失败，失败原因：{e}")
+        yield {
             "status": "error",
             "message": f"模型回答生成失败: {e}",
             "partial": "".join(full_answer_parts)
-        })
+        }
+
+
+async def stream_chat_answer(
+    websocket: WebSocket,
+    question: str,
+    session_id: str,
+    user_id: int = 0,
+    task_ids: List[str] = None,
+    need_kb: bool = False,
+    knowledge_ids: List[str] = None
+):
+    """
+    WebSocket 对话业务编排 — 薄适配层。
+    
+    将 stream_chat_answer 核心逻辑委托给 stream_chat_messages()，
+    仅负责将消息通过 WebSocket 发送给前端。
+    """
+    async for msg in stream_chat_messages(
+        question=question,
+        session_id=session_id,
+        user_id=user_id,
+        task_ids=task_ids,
+        need_kb=need_kb,
+        knowledge_ids=knowledge_ids,
+    ):
+        await websocket.send_json(msg)

@@ -1,9 +1,5 @@
-import asyncio
-import json
-
-import httpx
-from fastapi import APIRouter, Request, Depends
-from starlette.responses import StreamingResponse, JSONResponse
+from typing import Optional
+from fastapi import APIRouter, Request, Depends, Query
 
 from api.schemas import resp_200
 from database.models.user import User, UserDao
@@ -12,36 +8,28 @@ from utils.dependencies import get_current_user
 router = APIRouter(prefix='/user', tags=['user'])
 
 
-@router.post("/tts/relay")
-async def relay_tts(request: Request, current_user: User = Depends(get_current_user)):
+@router.get('/list', summary="获取用户列表")
+async def get_user_list(
+    page_num: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=10, ge=1, le=100, description="每页数量"),
+    username: Optional[str] = Query(default=None, description="按用户名模糊搜索"),
+    current_user: User = Depends(get_current_user)
+):
     """
-    中继接口：流式调用 TTS 服务并将语音流转发给前端
+    分页获取所有用户的 id 和用户名。
+    
+    支持按用户名模糊搜索。
     """
-    try:
-        body = await request.json()
-        body["stream"] = True  # 强制开启流式模式
+    users, total = UserDao.get_user_list(
+        page_num=page_num,
+        page_size=page_size,
+        username=username,
+    )
 
-        async def stream_generator():
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    "http://192.168.100.150:32509/tts/sft",
-                    headers={"Content-Type": "application/json"},
-                    content=json.dumps(body),
-                ) as response:
+    # 只返回 id 和 username，避免泄露敏感信息（如 phone_number）
+    items = [{"id": u.id, "username": u.username} for u in users]
 
-                    if response.status_code != 200:
-                        detail = await response.aread()
-                        yield detail
-                        return
-
-                    async for chunk in response.aiter_bytes():
-                        if chunk:
-                            print(chunk)
-                            yield chunk
-                            await asyncio.sleep(0)  # 让出事件循环
-
-        return StreamingResponse(stream_generator(), media_type="audio/wav")
-
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+    return resp_200(data={
+        "items": items,
+        "total": total,
+    })

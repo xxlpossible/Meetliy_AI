@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Tuple
 
-from sqlalchemy import Column, DateTime, String, text, Text, desc, and_
+from sqlalchemy import Column, DateTime, String, text, Text, desc, and_, Integer
 from sqlmodel import Field, SQLModel, select
 
 from database.base import session_getter
@@ -26,7 +26,10 @@ class ChatMessageBase(SQLModel):
 
 class ChatMessage(ChatMessageBase, table=True):
     """聊天记录表 - 每条数据对应一个输入或输出"""
-    chat_id: Optional[int] = Field(default=None, primary_key=True, unique=True)
+    chat_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
 
 
 class ChatMessageDao:

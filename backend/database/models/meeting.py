@@ -19,9 +19,10 @@ from database.base import session_getter
 
 
 class MeetingStatus(IntEnum):
-    ACTIVE = 0   # 进行中
-    ENDED = 1    # 已结束（已触发转录）
-    ERROR = -1   # 异常
+    ACTIVE = 0              # 会议正在进行中
+    END_AND_ANALYZE = 1     # 会议结束，会议内容正在后台解析中
+    FINISH = 2              # 内容解析完成
+    ERROR = -1              # 会议解析异常
 
 
 class MeetingBase(SQLModel):
@@ -32,7 +33,7 @@ class MeetingBase(SQLModel):
         default_factory=list,
         sa_column=Column(JSON, nullable=False, comment="参会者用户ID列表")
     )
-    status: Optional[int] = Field(default=MeetingStatus.ACTIVE.value, description="会议状态 0进行中 1已结束 -1异常")
+    status: Optional[int] = Field(default=MeetingStatus.ACTIVE.value, description="会议状态 0进行中 1结束解析中 2解析完成 -1异常")
     # 会议结束后关联的 Transcription.id，承载会后转录+纪要结果
     task_id: Optional[str] = Field(default=None, description="结束后关联的转录任务ID")
     create_time: Optional[datetime] = Field(sa_column=Column(
@@ -96,6 +97,13 @@ class MeetingDao:
             if meeting:
                 meeting.task_id = task_id
                 session.commit()
+
+    @classmethod
+    def get_by_task_id(cls, task_id: str) -> Optional[Meeting]:
+        """按 task_id 查询会议（供转录任务回调更新状态使用）。"""
+        with session_getter() as session:
+            statement = select(Meeting).where(Meeting.task_id == task_id)
+            return session.exec(statement).scalars().first()
 
     @classmethod
     def add_participant(cls, m_id: str, user_id: int):

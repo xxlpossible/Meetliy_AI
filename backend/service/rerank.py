@@ -85,7 +85,7 @@ class RerankService:
                     per_collection_results.setdefault(col_name, []).append(doc)
                     break
 
-        logger.info(f"多集合重排序完成: 输入 {len(all_docs)} 条，输出 top_k={len(reranked_docs)} 条")
+        logger.info(f"知识库多集合重排序完成: 输入 {len(all_docs)} 条，输出 top_k={len(reranked_docs)} 条")
         return reranked_docs, per_collection_results
 
     async def _rerank(self, question: str, documents: List[str], top_k: int) -> List[str]:

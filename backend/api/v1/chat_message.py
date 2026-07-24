@@ -1,25 +1,55 @@
 import json
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from api.schemas import resp_200
 from database.models.chatmessage import ChatMessageDao, ChatMessage
+from database.models.chat_session import ChatSession, ChatSessionDao
 from database.models.user import User
 from database.schemas.schema import (
     UserQA, ChatMessageQuery, ChatMessageAdd,
-    ChatMessageUpdate, UserTempQA
+    ChatMessageUpdate, UserTempQA, ChatSSERequest
 )
 from service.llm_service import llm_service
-from service.llm_graph_service import stream_chat_answer
+from service.llm_graph_service import stream_chat_answer, stream_chat_messages
 from fastapi.responses import StreamingResponse
 from fastapi import WebSocket, WebSocketDisconnect, Query
 from loguru import logger
 from utils.dependencies import get_current_user
 from utils.security import TOKEN_TYPE_ACCESS, decode_token
 import asyncio
-from database.base import session_getter
 
 router = APIRouter(prefix='/chat', tags=['chat'])
+
+
+def _generate_session_name(question: str) -> str:
+    """
+    根据用户第一条问题生成会话名称。
+    
+    规则：
+    - 去除首尾空白
+    - 过滤特殊字符，仅保留中文、英文、数字、空格
+    - 截取前 20 个字符，超出部分加省略号
+    """
+    if not question:
+        return "新会话"
+    
+    # 去除首尾空白
+    cleaned = question.strip()
+    # 过滤特殊字符（仅保留中文、英文、数字、空格）
+    cleaned = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9\s]', '', cleaned)
+    # 去除多余空白
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    if not cleaned:
+        return "新会话"
+    
+    # 截取前 20 个字符
+    max_len = 20
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[:max_len] + "…"
 
 
 # 该接口已经弃用，使用下面的WebSocket接口进行AI对话
@@ -73,6 +103,7 @@ async def chat_stream(
     WebSocket 聊天接口。
     
     每次调用代表开启一个新会话（由前端传入 session_id）。
+    首次收到消息时，如果 session 不存在则自动创建 ChatSession 记录。
     
     参数：
     - task_ids: 多个会议任务ID，用逗号分隔（如 "id1,id2,id3"），对应会议内容集合 collection_meeting_{id}
@@ -111,15 +142,16 @@ async def chat_stream(
     logger.info(f"🎧 WebSocket 连接已建立（客户端: {client_info}，session_id: {session_id}，task_ids: {task_id_list}，need_kb: {need_kb}，knowledge_ids: {knowledge_id_list}）")
 
     # === 第三步：设置超时和消息循环 ===
+    session_created = False
     try:
         while True:
             try:
                 data = await asyncio.wait_for(
                     websocket.receive_json(),
-                    timeout=30
+                    timeout=300
                 )
             except asyncio.TimeoutError:
-                logger.info(f"⏰ WebSocket 连接超时（{30} 秒无消息），自动关闭")
+                logger.info(f"⏰ WebSocket 连接超时（{300} 秒无消息），自动关闭")
                 await websocket.close(code=4000)
                 break
 
@@ -132,6 +164,22 @@ async def chat_stream(
                 await websocket.send_json({"status": "error", "message": "问题不能为空"})
                 continue
 
+            # 首次收到有效消息时，自动创建 Session
+            if not session_created:
+                existing = ChatSessionDao.get_by_session_id(session_id=session_id)
+                if existing is None:
+                    session_name = _generate_session_name(str(question).strip())
+                    ChatSessionDao.add(ChatSession(
+                        session_id=session_id,
+                        session_name=session_name,
+                        user_id=user_id,
+                        task_ids=task_id_list,
+                        knowledge_ids=knowledge_id_list,
+                        need_kb=need_kb,
+                    ))
+                    logger.info(f"🎯 自动创建会话: session_id={session_id}, name={session_name}")
+                session_created = True
+
             try:
                 await stream_chat_answer(
                     websocket, str(question).strip(), 
@@ -143,16 +191,70 @@ async def chat_stream(
             except WebSocketDisconnect:
                 raise
             except Exception as e:
-                logger.error(f"❌ 处理用户问题失败: {e}", exc_info=True)
+                logger.error("❌ 处理用户问题失败", exc_info=True)
                 await websocket.send_json({"status": "error", "message": f"处理失败: {e}"})
 
     except WebSocketDisconnect:
         logger.info("❎ WebSocket 客户端主动断开连接")
     except Exception as e:
-        logger.error(f"❌ WebSocket 异常: {e}", exc_info=True)
+        logger.error("❌ WebSocket 异常", exc_info=True)
     finally:
         await websocket.close()
         logger.info("🧹 WebSocket 连接已清理关闭")
+
+
+@router.post('/sse/chat', summary="SSE 流式聊天")
+async def chat_sse(
+    body: ChatSSERequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    SSE 事件流：
+    - event: start     data: {"question": "..."}
+    - event: streaming data: {"text": "token 片段"}
+    - event: done      data: {"text": "完整回答"}
+    - event: error     data: {"message": "错误信息", "partial": "..."}
+    """
+    task_ids = body.task_ids or []
+    knowledge_ids = body.knowledge_ids or []
+    user_id = current_user.id
+    
+    # 首次收到消息时，自动创建 Session
+    existing = ChatSessionDao.get_by_session_id(session_id=body.session_id)
+    if existing is None:
+        session_name = _generate_session_name(body.question)
+        ChatSessionDao.add(ChatSession(
+            session_id=body.session_id,
+            session_name=session_name,
+            user_id=user_id,
+            task_ids=task_ids,
+            knowledge_ids=knowledge_ids,
+            need_kb=body.need_kb,
+        ))
+        logger.info(f"🎯会话开始 SSE自动创建会话: session_id={body.session_id}, name={session_name}")
+    
+    async def event_generator():
+        """将核心对话逻辑的消息转换为 SSE 格式"""
+        async for msg in stream_chat_messages(
+            question=body.question,
+            session_id=body.session_id,
+            user_id=user_id,
+            task_ids=task_ids,
+            need_kb=body.need_kb,
+            knowledge_ids=knowledge_ids,
+        ):
+            status = msg.get('status', 'unknown')
+            yield f"event: {status}\ndata: {json.dumps(msg, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
+        }
+    )
 
 
 @router.post('/temp/question', description="临时对话")

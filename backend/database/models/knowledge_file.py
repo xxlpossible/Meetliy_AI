@@ -125,3 +125,21 @@ class KnowledgeFileDao:
         with session_getter() as session:
             statement = select(KnowledgeFile).where(KnowledgeFile.id == file_id)
             return session.scalars(statement).first()
+
+    @classmethod
+    def delete_all_by_knowledge_id(cls, knowledge_id: str) -> int:
+        """软删除指定知识库下的所有文件。返回实际被删除的文件数量。"""
+        with session_getter() as session:
+            statement = select(KnowledgeFile).where(
+                KnowledgeFile.knowledge_id == knowledge_id,
+                KnowledgeFile.del_flag == 0,
+            )
+            files = session.exec(statement).scalars().all()
+            count = 0
+            for f in files:
+                f.del_flag = -1
+                session.add(f)
+                count += 1
+            if count > 0:
+                session.commit()
+            return count
