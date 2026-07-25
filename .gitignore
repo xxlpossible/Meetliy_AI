@@ -24,6 +24,7 @@ backend/sql/
 backend/checkpoints.db
 backend/*.db
 backend/*.sqlite3
+backend/test
 
 # ===== Node.js (frontend) =====
 node_modules/
