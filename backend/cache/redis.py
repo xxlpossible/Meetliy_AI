@@ -188,6 +188,25 @@ class RedisClient:
         finally:
             self.close()
 
+    def r_push_str(self, key: str, value: str, expiration: int = 7200):
+        """向 Redis List 右侧推送字符串值（不经过 pickle 序列化）。"""
+        try:
+            self.cluster_nodes(key)
+            ret = self.connection.rpush(key, value)
+            if expiration:
+                self.connection.expire(key, expiration)
+            return ret
+        finally:
+            self.close()
+
+    def l_range_str(self, key: str) -> list:
+        """获取 Redis List 全部元素（返回原始字符串/bytes 列表）。"""
+        try:
+            self.cluster_nodes(key)
+            return self.connection.lrange(key, 0, -1)
+        finally:
+            self.close()
+
     def get_keys_by_prefix(self, prefix: str):
         try:
             self.cluster_nodes(prefix)

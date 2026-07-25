@@ -25,6 +25,11 @@ class MeetingStatus(IntEnum):
     ERROR = -1              # 会议解析异常
 
 
+class MeetingDelete(IntEnum):
+    NOT = 0                 # 未删除
+    DELETED = -1            # 已软删除
+
+
 class MeetingBase(SQLModel):
     meeting_name: Optional[str] = Field(default=None, description="会议名称")
     host_user_id: int = Field(nullable=False, index=True, description="会议发起人(主持人)ID")
@@ -36,6 +41,9 @@ class MeetingBase(SQLModel):
     status: Optional[int] = Field(default=MeetingStatus.ACTIVE.value, description="会议状态 0进行中 1结束解析中 2解析完成 -1异常")
     # 会议结束后关联的 Transcription.id，承载会后转录+纪要结果
     task_id: Optional[str] = Field(default=None, description="结束后关联的转录任务ID")
+    # 会议结束后是否需要生成纪要（默认True，False则跳过转录任务）
+    need_summary: Optional[bool] = Field(default=True, description="会议结束后是否需要生成纪要")
+    is_delete: Optional[int] = Field(default=MeetingDelete.NOT.value, description="是否被软删除 0正常 -1已删除")
     create_time: Optional[datetime] = Field(sa_column=Column(
         DateTime, nullable=False, index=True, server_default=text('CURRENT_TIMESTAMP')))
     update_time: Optional[datetime] = Field(
@@ -71,9 +79,13 @@ class MeetingDao:
         """
         按主键查询会议。
         传入 user_id 时，仅当该用户在 user_ids 中才返回记录（越权防护）。
+        已软删除的记录不返回。
         """
         with session_getter() as session:
-            statement = select(Meeting).where(Meeting.id == m_id)
+            statement = select(Meeting).where(
+                Meeting.id == m_id,
+                Meeting.is_delete == MeetingDelete.NOT.value
+            )
             if user_id is not None:
                 statement = statement.where(
                     func.json_contains(Meeting.user_ids, cast(user_id, JSON))
@@ -99,6 +111,15 @@ class MeetingDao:
                 session.commit()
 
     @classmethod
+    def update_need_summary(cls, m_id: str, need_summary: bool):
+        """更新会议是否需要生成纪要。"""
+        with session_getter() as session:
+            meeting = session.get(Meeting, m_id)
+            if meeting:
+                meeting.need_summary = need_summary
+                session.commit()
+
+    @classmethod
     def get_by_task_id(cls, task_id: str) -> Optional[Meeting]:
         """按 task_id 查询会议（供转录任务回调更新状态使用）。"""
         with session_getter() as session:
@@ -116,12 +137,32 @@ class MeetingDao:
             cls.update(meeting)
 
     @classmethod
-    def list(cls, user_id: int, page_num: int = 1, page_size: int = 10):
-        """分页查询当前用户参加的会议列表。"""
+    def soft_delete(cls, m_id: str, user_id: int = None) -> bool:
+        """
+        软删除会议：将 is_delete 设为 -1。
+        传入 user_id 时校验权限（仅 host_user_id 可删除）。
+        返回是否成功。
+        """
+        with session_getter() as session:
+            meeting = session.get(Meeting, m_id)
+            if not meeting or meeting.is_delete == MeetingDelete.DELETED.value:
+                return False
+            if user_id is not None and meeting.host_user_id != user_id:
+                return False
+            meeting.is_delete = MeetingDelete.DELETED.value
+            session.commit()
+            return True
+
+    @classmethod
+    def list(cls, user_id: int, page_num: int = 1, page_size: int = 10, meeting_name: str = None):
+        """分页查询当前用户参加的会议列表（过滤已软删除的记录）。"""
         with session_getter() as session:
             conditions = [
                 func.json_contains(Meeting.user_ids, cast(user_id, JSON)),
+                Meeting.is_delete == MeetingDelete.NOT.value,
             ]
+            if meeting_name is not None:
+                conditions.append(Meeting.meeting_name.contains(meeting_name))
             statement = select(Meeting).where(and_(*conditions)).order_by(desc(Meeting.create_time))
             offset = (page_num - 1) * page_size
             results = session.exec(statement.offset(offset).limit(page_size)).scalars().all()

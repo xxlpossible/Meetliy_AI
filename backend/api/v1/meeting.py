@@ -11,9 +11,9 @@ import asyncio
 import base64
 import json
 import os
+import time
 from service.meeting_callback import MeetingCallback
 from dashscope.audio.qwen_omni.omni_realtime import TranscriptionParams
-from service.realtime_asr import WebSocketCallback
 from fastapi import WebSocket, WebSocketDisconnect
 from utils.security import TOKEN_TYPE_ACCESS, decode_token
 import aiofiles
@@ -21,7 +21,7 @@ from loguru import logger
 import tempfile
 import uuid
 from api.schemas import resp_200
-from database.models.meeting import Meeting, MeetingDao, MeetingStatus
+from database.models.meeting import Meeting, MeetingDao, MeetingStatus, MeetingDelete
 from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
 from database.models.user import User, UserDao
 from service.meeting_manager import meeting_manager
@@ -38,11 +38,13 @@ router = APIRouter(prefix="/meeting", tags=["会议"])
 
 class CreateMeetingRequest(BaseModel):
     meeting_name: Optional[str] = None
+    need_summary: Optional[bool] = True  # 会议结束后是否需要生成纪要，默认需要
 
 
 class MeetingListRequest(BaseModel):
     page_num: int = 1
     page_size: int = 10
+    meeting_name: Optional[str] = None
 
 
 class MeetingStatusRequest(BaseModel):
@@ -65,6 +67,7 @@ async def create_meeting(
         user_ids=[current_user.id],
         status=MeetingStatus.ACTIVE.value,
         task_id=None,
+        need_summary=body.need_summary,
     )
     MeetingDao.add(meeting)
     logger.info(f"创建会议: id={meeting_id} host={current_user.username} name={meeting.meeting_name}")
@@ -72,6 +75,7 @@ async def create_meeting(
         "meeting_id": meeting_id,
         "meeting_name": meeting.meeting_name,
         "host_user_id": current_user.id,
+        "need_summary": meeting.need_summary,
     })
 
 
@@ -85,6 +89,7 @@ async def list_meetings(
         user_id=current_user.id,
         page_num=body.page_num,
         page_size=body.page_size,
+        meeting_name=body.meeting_name
     )
     data = []
     for m in results:
@@ -94,6 +99,7 @@ async def list_meetings(
             "host_user_id": m.host_user_id,
             "status": m.status,
             "task_id": m.task_id,
+            "need_summary": m.need_summary if m.need_summary is not None else True,
             "create_time": m.create_time.strftime("%Y-%m-%d %H:%M:%S") if m.create_time else None,
         })
     return resp_200(data={"data": data, "total": total})
@@ -178,6 +184,7 @@ async def get_meeting_status(
             "status": meeting.status,
             "status_label": status_labels.get(meeting.status, "未知状态"),
             "task_id": meeting.task_id,
+            "need_summary": meeting.need_summary if meeting.need_summary is not None else True,
         })
 
     return resp_200(data=results)
@@ -218,6 +225,8 @@ async def get_meeting_result(
         "status": transcription.status,
         "task_result": transcription.task_result,
         "file_url": transcription.file_url,
+        "realtime_asr_text": transcription.realtime_asr_text,
+        "need_summary": meeting.need_summary if meeting.need_summary is not None else True,
         "create_time": transcription.create_time.strftime("%Y-%m-%d %H:%M:%S") if transcription.create_time else None,
         "update_time": transcription.update_time.strftime("%Y-%m-%d %H:%M:%S") if transcription.update_time else None,
     })
@@ -246,17 +255,64 @@ async def end_meeting(
     if meeting.status != MeetingStatus.ACTIVE.value:
         raise HTTPException(status_code=400, detail="会议已结束")
 
-    # 1. 关闭所有连接，收集录音信息（从内存房间）
+    # 0. 先广播 meeting_ended（必须在 end_meeting pop 房间之前），
+    #    确保剩余参会者收到通知立刻停止音频并退出会议室
+    t_id = uuid.uuid4().hex
+    meeting_manager.broadcast_meeting_ended(meeting_id, t_id)
+
+    # 1. 读取实时转录文本（必须在 end_meeting 之前，因为 end_meeting 会 pop 掉房间）
+    realtime_lines = meeting_manager.get_transcript_lines(meeting_id)
+    logger.info(f"会议 {meeting_id} 读取到 {len(realtime_lines)} 行实时转录文本")
+
+    # 2. 关闭所有连接，收集录音信息（从内存房间）
     participants_info = meeting_manager.end_meeting(meeting_id)
     logger.info(f"会议 {meeting_id} 收集到 {len(participants_info)} 路录音")
 
     if not participants_info:
         raise HTTPException(status_code=400, detail="会议无录音数据")
 
-    # 执行共享的结束会议逻辑
-    task_id = await _execute_end_meeting(meeting_id, participants_info, meeting)
+    # 执行共享的结束会议逻辑（使用预生成的 t_id）
+    task_id = await _execute_end_meeting(meeting_id, participants_info, meeting, realtime_lines, t_id)
 
-    return resp_200(data={"task_id": task_id}, message="会议已结束，正在生成纪要")
+    if task_id:
+        if meeting.need_summary:
+            return resp_200(data={"task_id": task_id, "need_summary": True}, message="会议已结束，正在生成纪要")
+        else:
+            return resp_200(data={"task_id": task_id, "need_summary": False}, message="会议已结束")
+    else:
+        return resp_200(data={"task_id": None, "need_summary": meeting.need_summary}, message="会议已结束")
+
+
+@router.delete("/{meeting_id}", summary="软删除会议（仅主持人）")
+async def delete_meeting(
+        meeting_id: str,
+        current_user: User = Depends(get_current_user),
+):
+    """
+    软删除会议：将 is_delete 设为 -1，同时联动软删除关联的 Transcription。
+    仅主持人可操作。
+    """
+    meeting = MeetingDao.get_by_id(m_id=meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="会议不存在")
+    if meeting.host_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="仅主持人可删除会议")
+    if meeting.is_delete == MeetingDelete.DELETED.value:
+        raise HTTPException(status_code=400, detail="会议已被删除")
+
+    # 软删除 Meeting
+    success = MeetingDao.soft_delete(meeting_id, user_id=current_user.id)
+    if not success:
+        raise HTTPException(status_code=500, detail="删除会议失败")
+
+    # 联动软删除关联的 Transcription
+    if meeting.task_id:
+        TranscriptionDao.soft_delete_by_task_id(meeting.task_id)
+        logger.info(f"会议 {meeting_id} 已软删除，联动删除转录记录 {meeting.task_id}")
+    else:
+        logger.info(f"会议 {meeting_id} 已软删除（无关联转录记录）")
+
+    return resp_200(message="会议已删除")
 
 
 @router.post('/start_task', description="上传语音文件")
@@ -309,6 +365,7 @@ async def upload_file(
             user_ids=[current_user.id],
             status=MeetingStatus.END_AND_ANALYZE.value,
             task_id=t_id,
+            need_summary=True,
         ))
         logger.info(f"上传语音文件，创建 Meeting 记录: id={meeting_id} task_id={t_id}")
 
@@ -338,10 +395,8 @@ async def websocket_endpoint(
         meeting_id: Optional[str] = Query(None),
 ):
     """
-    实时语音转写 WebSocket。
-    - 无 meeting_id：单用户模式（向后兼容，消息格式不变）
-    - 有 meeting_id：会议模式（解析 User、加入房间、广播带说话人标签的转写、
-      服务端录制 PCM、路由 WebRTC 信令）
+    实时语音转写 WebSocket（会议模式）。
+    - 解析 User、加入房间、广播带说话人标签的转写、服务端录制 PCM、路由 WebRTC 信令
     """
     # WebSocket 无法返回标准 401，采用自定义关闭码 4401 表示认证失败
     if not token:
@@ -359,63 +414,12 @@ async def websocket_endpoint(
 
     await websocket.accept()
 
-    # 分支：会议模式 vs 单用户模式
-    if meeting_id:
-        await _meeting_websocket_loop(websocket, meeting_id, payload)
-    else:
-        await _single_user_websocket_loop(websocket)
+    if not meeting_id:
+        await websocket.close(code=4400)
+        logger.warning("🔒 WebSocket 连接因未提供 meeting_id 被拒绝（仅支持会议模式）")
+        return
 
-
-async def _single_user_websocket_loop(websocket: WebSocket):
-    """单用户实时转写（向后兼容原有逻辑与消息格式）。"""
-    loop = asyncio.get_running_loop()
-    callback = WebSocketCallback(websocket, loop)
-
-    dashscope_config = settings.get_dashscope_config()
-    workspace_id = dashscope_config.get("workspace_id", "")
-    ws_url = f'wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' if workspace_id else None
-    conversation = OmniRealtimeConversation(
-        model='qwen3-asr-flash-realtime',
-        callback=callback,
-        api_key=dashscope_config.get("api_key"),
-        url=ws_url,
-    )
-
-    try:
-        conversation.connect()
-        print("Backend: Connected to DashScope, configuring session...")
-        conversation.update_session(
-            output_modalities=[MultiModality.TEXT],
-            enable_input_audio_transcription=True,
-            transcription_params=TranscriptionParams(
-                language='zh',
-                sample_rate=16000,
-                input_audio_format="pcm"
-            ),
-            enable_turn_detection=True,
-            turn_detection_type='server_vad'
-        )
-        print("Backend: Session configured, waiting for audio...")
-
-        while True:
-            data = await websocket.receive_bytes()
-            if data:
-                audio_b64 = base64.b64encode(data).decode('ascii')
-                conversation.append_audio(audio_b64)
-            else:
-                break
-
-    except WebSocketDisconnect:
-        print("Frontend disconnected.")
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        try:
-            conversation.end_session()
-        except Exception:
-            pass
-        conversation.close()
-        print("Recognizer stopped.")
+    await _meeting_websocket_loop(websocket, meeting_id, payload)
 
 
 async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_payload: dict):
@@ -456,11 +460,15 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
     dashscope_config = settings.get_dashscope_config()
     workspace_id = dashscope_config.get("workspace_id", "")
     ws_url = f'wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' if workspace_id else None
+    # 获取会议房间创建时间，用于回调计算相对时间戳
+    room = meeting_manager.get_room(meeting_id)
+    room_started_at = room.started_at if room else time.time()
     callback = MeetingCallback(
         manager=meeting_manager,
         meeting_id=meeting_id,
         user_id=user_id,
         username=username,
+        room_started_at=room_started_at,
     )
     conversation = OmniRealtimeConversation(
         model='qwen3-asr-flash-realtime',
@@ -547,15 +555,11 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
         logger.error(f"[Meeting] WS 异常: meeting={meeting_id} user={username}, {e!r}")
     finally:
         # 6. 清理：移除参会者、关 PCM、关 DashScope、广播离开
-        #    is_last 表示该参会者离开后房间是否已空
-        # 注意：broadcast_participant_event 对已离开的参会者不生效，
-        # 但仍有重要作用：告知剩余参会者有人离开。
         conn, is_last = meeting_manager.remove_participant(meeting_id, user_id)
         if is_last:
             # 最后一人离开：自动结束会议（合并录音 → OSS 上传 → 触发转录任务）
             logger.info(f"[Meeting] 最后一名参会者离开，自动结束会议: meeting={meeting_id}")
             try:
-                # 延迟导入避免循环依赖（stt ↔ meeting 在 __init__.py 中互相依赖）
                 from api.v1.meeting import auto_end_meeting
                 await auto_end_meeting(meeting_id)
             except Exception:
@@ -567,11 +571,10 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
 async def auto_end_meeting(meeting_id: str) -> bool:
     """
     自动结束会议：当最后一名参会者离开房间时调用。
-    
+
     与房主主动结束的区别：
     - 不做权限校验（非主动调用）
-    - 会议状态和录音信息都已存在，只执行合并+上传+触发任务
-    
+
     需要复用 _execute_end_meeting 的合并+上传逻辑。
     返回是否成功触发了转录任务。
     """
@@ -585,13 +588,17 @@ async def auto_end_meeting(meeting_id: str) -> bool:
         logger.info(f"[AutoEnd] 会议已结束或异常，跳过: {meeting_id} status={meeting.status}")
         return False
     
-    # 安全校验：最后一人已离开，房间应为空（或不存在）
+    # 安全校验：最后一人已离开，房间应为空
     if meeting_manager.room_exists(meeting_id):
         participants = meeting_manager.get_participants(meeting_id)
         if len(participants) > 0:
             logger.warning(f"[AutoEnd] 房间仍有参会者，不自动结束: {meeting_id}")
             return False
     
+    # 读取实时转录文本（必须在 end_meeting 之前，因为 end_meeting 会 pop 掉房间）
+    realtime_lines = meeting_manager.get_transcript_lines(meeting_id)
+    logger.info(f"[AutoEnd] 会议 {meeting_id} 读取到 {len(realtime_lines)} 行实时转录文本")
+
     # 收集录音信息（如果房间还存在，end_meeting 会清理房间录音）
     participants_info = meeting_manager.end_meeting(meeting_id)
     logger.info(f"[AutoEnd] 会议 {meeting_id} 自动结束，收集到 {len(participants_info)} 路录音")
@@ -602,8 +609,8 @@ async def auto_end_meeting(meeting_id: str) -> bool:
         return False
     
     # 复用 _execute_end_meeting 的合并+上传+任务逻辑
-    task_id = await _execute_end_meeting(meeting_id, participants_info, meeting)
-    logger.info(f"[AutoEnd] 会议 {meeting_id} 自动结束成功，task_id={task_id}")
+    task_id = await _execute_end_meeting(meeting_id, participants_info, meeting, realtime_lines)
+    logger.info(f"[AutoEnd] 会议 {meeting_id} 自动结束成功，task_id={task_id}, need_summary={meeting.need_summary}")
     return True
 
 
@@ -611,12 +618,38 @@ async def _execute_end_meeting(
         meeting_id: str,
         participants_info: list,
         meeting: Meeting,
-) -> str:
+        realtime_lines: Optional[list] = None,
+        task_id: Optional[str] = None,
+) -> Optional[str]:
     """
     结束会议的核心逻辑：合并音频、OSS上传、创建Transcription、触发Celery、更新DB。
     供房主主动结束（end_meeting）和最后一人自动结束（auto_end）复用。
-    返回 task_id。
+    返回 task_id（无需生成纪要时也返回 task_id，但不执行后台任务）。
     """
+    # 如果调用方没有传入 realtime_lines（向后兼容），再从内存中读取
+    if realtime_lines is None:
+        realtime_lines = _get_realtime_transcript(meeting_id)
+
+    # 检查是否需要生成纪要
+    if not meeting.need_summary:
+        # 无需生成纪要：清理 PCM 文件，创建 Transcription 记录保存实时转录文本，不执行后台任务
+        logger.info(f"会议 {meeting_id} 无需生成纪要，跳过转录任务")
+        _cleanup_pcm_files(meeting_id, participants_info)
+        # 创建 Transcription 记录，保存实时转录文本
+        t_id = task_id or uuid.uuid4().hex
+        TranscriptionDao.add(Transcription(
+            id=t_id,
+            task_name=meeting.meeting_name,
+            user_ids=meeting.user_ids,
+            status=Status.COMPLETE.value,
+            task_result=None,
+            is_delete=Delete.NOT.value,
+            realtime_asr_text=realtime_lines,
+        ))
+        MeetingDao.update_status(meeting_id, MeetingStatus.FINISH.value)
+        MeetingDao.update_task_id(meeting_id, t_id)
+        return t_id
+
     # 2-3. ffmpeg 合并 + OSS 上传（耗时操作，放线程池避免阻塞事件循环）
     def _merge_and_upload():
         merged_path = audio_merger.merge(participants_info)
@@ -639,7 +672,7 @@ async def _execute_end_meeting(
     _cleanup_pcm_files(meeting_id, participants_info)
 
     # 4. 创建 Transcription 记录（全体参会者有权访问）
-    t_id = uuid.uuid4().hex
+    t_id = task_id or uuid.uuid4().hex
     TranscriptionDao.add(Transcription(
         id=t_id,
         task_name=meeting.meeting_name,
@@ -648,6 +681,7 @@ async def _execute_end_meeting(
         task_result=None,
         is_delete=Delete.NOT.value,
         file_url=public_url,
+        realtime_asr_text=realtime_lines,
     ))
 
     # 更新 Meeting 状态为 END_AND_ANALYZE，关联 task_id
@@ -658,9 +692,16 @@ async def _execute_end_meeting(
     transcription.delay(public_url, t_id)
     logger.info(f"会议 {meeting_id} 转录任务已提交: task_id={t_id}")
 
-    # 7. 广播会议结束（此时连接可能已被 end_meeting 关闭，尽力发送）
-    meeting_manager.broadcast_meeting_ended(meeting_id, t_id)
     return t_id
+
+
+def _get_realtime_transcript(meeting_id: str) -> list:
+    """从内存中读取实时转录文本行列表。"""
+    try:
+        return meeting_manager.get_transcript_lines(meeting_id)
+    except Exception as e:
+        logger.warning(f"读取实时转录文本失败: {e}")
+        return []
 
 
 def _cleanup_pcm_files(meeting_id: str, participants_info: list):

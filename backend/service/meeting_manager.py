@@ -53,6 +53,8 @@ class MeetingRoom:
     # 录音信息注册表：user_id -> {user_id, username, audio_file_path, join_offset_seconds}
     # 即使参会者离开（从 participants 移除），录音记录仍保留，供会议结束时合并使用
     recordings: Dict[int, dict] = field(default_factory=dict)
+    # 实时转录文本行（会议结束后持久化到 DB，内存临时存储）
+    transcript_lines: List[str] = field(default_factory=list)
 
 
 class MeetingManager:
@@ -94,6 +96,11 @@ class MeetingManager:
     def room_exists(self, meeting_id: str) -> bool:
         with self._rooms_lock:
             return meeting_id in self._rooms
+
+    def get_room(self, meeting_id: str) -> Optional[MeetingRoom]:
+        """获取房间引用（不移除）。"""
+        with self._rooms_lock:
+            return self._rooms.get(meeting_id)
 
     def add_participant(
         self,
@@ -191,6 +198,21 @@ class MeetingManager:
             conn = room.participants.get(user_id) if room else None
         if conn and conn.audio_file and not conn.audio_file.closed:
             conn.audio_file.write(data)
+
+    def add_transcript_line(self, meeting_id: str, text: str):
+        """向指定会议的转录文本列表追加一行。"""
+        with self._rooms_lock:
+            room = self._rooms.get(meeting_id)
+            if room:
+                room.transcript_lines.append(text)
+
+    def get_transcript_lines(self, meeting_id: str) -> List[str]:
+        """获取转录文本行列表（原始列表，不拼接）。"""
+        with self._rooms_lock:
+            room = self._rooms.get(meeting_id)
+            if room:
+                return list(room.transcript_lines)
+        return []
 
     # ------------------------------------------------------------------ #
     #  广播 / 信令路由（可被子线程回调调用）

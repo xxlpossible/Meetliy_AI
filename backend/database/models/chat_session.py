@@ -107,7 +107,7 @@ class ChatSessionDao:
 
     @classmethod
     def delete(cls, session_id: str, user_id: int) -> bool:
-        """删除会话。仅创建者可删除。返回是否成功。"""
+        """删除会话。仅创建者可删除。同时删除关联的 ChatMessage 记录。返回是否成功。"""
         with session_getter() as db_session:
             statement = select(ChatSession).where(
                 ChatSession.session_id == session_id,
@@ -116,6 +116,16 @@ class ChatSessionDao:
             session = db_session.exec(statement).scalars().first()
             if not session:
                 return False
+            # 先删除关联的 ChatMessage 记录
+            from database.models.chatmessage import ChatMessage
+            msg_stmt = select(ChatMessage).where(
+                ChatMessage.session_id == session_id,
+                ChatMessage.user_id == user_id,
+            )
+            messages = db_session.exec(msg_stmt).scalars().all()
+            for msg in messages:
+                db_session.delete(msg)
+            # 删除 Session 本身
             db_session.delete(session)
             db_session.commit()
             return True

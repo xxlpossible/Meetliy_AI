@@ -166,6 +166,27 @@ class ChromaDBManager:
         )
         logger.info(f"已从集合 {collection_name} 中删除 file_id={file_id} 的所有向量")
 
+    def delete_by_session_id(self, user_id: int, session_id: str):
+        """
+        根据 session_id 删除指定用户聊天记忆集合中的相关向量。
+        
+        Args:
+            user_id: 用户ID，用于定位集合 chat_memory_{user_id}
+            session_id: 会话ID，作为 metadata 过滤条件
+        """
+        collection_name = f"chat_memory_{user_id}"
+        try:
+            collection = self.client.get_collection(collection_name)
+        except Exception:
+            logger.warning(f"集合 {collection_name} 不存在，跳过 Chroma 删除步骤")
+            return
+
+        # 使用 where 条件删除 session_id 匹配的文档
+        collection.delete(
+            where={"session_id": session_id}
+        )
+        logger.info(f"已从集合 {collection_name} 中删除 session_id={session_id} 的所有向量")
+
 
 db_manager = ChromaDBManager()
 

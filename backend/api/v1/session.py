@@ -13,6 +13,7 @@ from api.schemas import resp_200
 from database.models.chat_session import ChatSession, ChatSessionDao
 from database.models.user import User
 from utils.dependencies import get_current_user
+from utils.siliconflow_embedding import db_manager
 
 router = APIRouter(prefix="/session", tags=["session"])
 
@@ -123,9 +124,16 @@ async def delete_session(
     """
     删除指定的 AI 对话会话（物理删除）。
     - 仅会话创建者可删除。
+    - 同步删除关联的 ChatMessage 记录。
+    - 同步删除 Chroma 向量库中该会话的记忆数据。
     """
     deleted = ChatSessionDao.delete(session_id=session_id, user_id=current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+    # 清理 Chroma 向量库中的会话记忆
+    try:
+        db_manager.delete_by_session_id(user_id=current_user.id, session_id=session_id)
+    except Exception as e:
+        logger.warning(f"删除 Chroma 记忆失败（session={session_id}）: {e}")
     logger.info(f"用户 {current_user.id} 删除会话: {session_id}")
     return resp_200(message="会话已删除", data={"session_id": session_id})

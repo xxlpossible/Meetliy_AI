@@ -36,7 +36,10 @@ class TranscriptionBase(SQLModel):
         sa_column=Column(JSON, nullable=False)
     )
     is_delete: Optional[int] = Field(default=Delete.NOT.value)
-    realtime_asr_text: Optional[str] = Field(default=None)
+    realtime_asr_text: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True, comment="实时转录文本行列表")
+    )
     note: Optional[str] = Field(default=None)
     # 会议合并后音频文件的 OSS 公网下载地址（mp3 已上传至 OSS，本地不保留）
     file_url: Optional[str] = Field(
@@ -140,4 +143,15 @@ class TranscriptionDao:
             total_count = session.exec(count_statement).scalars().one()
 
             return results, total_count
+
+    @classmethod
+    def soft_delete_by_task_id(cls, task_id: str) -> bool:
+        """按 task_id 软删除转录记录（会议删除时联动）。"""
+        with session_getter() as session:
+            transcription = session.get(Transcription, task_id)
+            if not transcription:
+                return False
+            transcription.is_delete = Delete.YES.value
+            session.commit()
+            return True
 
