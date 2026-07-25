@@ -19,7 +19,7 @@ _SECTION_META: Dict[str, tuple] = {
     'transcription':      ('TRANSCRIPTION', ['base_url', 'api_key', 'model']),
     'hugging_face_config': ('HUGGINGFACE', ['token']),
     'minio_config':       ('',             ['MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY']),
-    'dashscope':          ('DASHSCOPE',    ['api_key', 'workspace_id']),
+    'dashscope':          ('DASHSCOPE',    ['api_key', 'workspace_id', 'base_url']),
     'rerank':             ('RERANK',       ['model', 'base_url', 'api_key']),
     'qwen':               ('QWEN',         ['model', 'base_url', 'api_key']),
     'embeddings':         ('EMBEDDINGS',   ['model', 'base_url', 'api_key']),

@@ -17,10 +17,12 @@ class DashScopeASRService:
     def __init__(self):
         dashscope_config = settings.get_dashscope_config()
         api_key = dashscope_config.get("api_key")
+        base_url = dashscope_config.get('base_url')
         if not api_key:
             raise ValueError("❌ 未配置 DashScope API Key！")
 
         dashscope.api_key = api_key
+        dashscope.base_http_api_url = base_url
 
     def transcribe(
         self,
