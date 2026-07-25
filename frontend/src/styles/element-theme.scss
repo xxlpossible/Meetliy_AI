@@ -1,0 +1,79 @@
+// ============================================================
+// Element Plus 主题覆盖 — 对齐"温暖工作室"设计系统
+// 将 Element Plus 默认蓝色改为琥珀暖光色系
+// ============================================================
+
+:root {
+  // 品牌色：琥珀暖光替代默认蓝色
+  --el-color-primary: #F5B400;
+  --el-color-primary-light-3: #FFD046;
+  --el-color-primary-light-5: #FFE089;
+  --el-color-primary-light-7: #FFF3D6;
+  --el-color-primary-light-8: #FFFBF0;
+  --el-color-primary-light-9: #FFFBF0;
+  --el-color-primary-dark-2: #D99A00;
+
+  // 语义色对齐设计系统
+  --el-color-success: #10B981;
+  --el-color-success-light-3: #6EE7B7;
+  --el-color-success-light-5: #A7F3D0;
+  --el-color-success-light-7: #D1FAE5;
+  --el-color-success-light-9: #ECFDF5;
+
+  --el-color-danger: #EF4444;
+  --el-color-danger-light-3: #FCA5A5;
+  --el-color-danger-light-5: #FECACA;
+  --el-color-danger-light-7: #FEE2E2;
+  --el-color-danger-light-9: #FEF2F2;
+
+  --el-color-warning: #F59E0B;
+  --el-color-warning-light-3: #FCD34D;
+  --el-color-warning-light-5: #FDE68A;
+  --el-color-warning-light-7: #FEF3C7;
+  --el-color-warning-light-9: #FFFBEB;
+
+  --el-color-info: #3B82F6;
+  --el-color-info-light-3: #93C5FD;
+  --el-color-info-light-5: #BFDBFE;
+  --el-color-info-light-7: #DBEAFE;
+  --el-color-info-light-9: #EFF6FF;
+
+  // 文字色对齐暖石灰色阶
+  --el-text-color-primary: #292522;
+  --el-text-color-regular: #44403A;
+  --el-text-color-secondary: #787165;
+  --el-text-color-placeholder: #A89F8C;
+  --el-text-color-disabled: #D6D0C4;
+
+  // 边框色
+  --el-border-color: #E8E4DC;
+  --el-border-color-light: #F3F1ED;
+  --el-border-color-lighter: #F3F1ED;
+  --el-border-color-extra-light: #FAF9F7;
+  --el-border-color-dark: #D6D0C4;
+  --el-border-color-darker: #A89F8C;
+
+  // 背景色
+  --el-bg-color: #FFFFFF;
+  --el-bg-color-page: #FAF9F7;
+  --el-bg-color-overlay: #FFFFFF;
+  --el-fill-color: #F3F1ED;
+  --el-fill-color-light: #F3F1ED;
+  --el-fill-color-lighter: #FAF9F7;
+  --el-fill-color-extra-light: #FAF9F7;
+  --el-fill-color-blank: #FFFFFF;
+
+  // 圆角
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+
+  // 字体
+  --el-font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --el-font-size-base: 14px;
+
+  // 阴影
+  --el-box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --el-box-shadow-light: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --el-box-shadow-dark: 0 4px 16px rgba(0, 0, 0, 0.08);
+}

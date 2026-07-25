@@ -1,0 +1,158 @@
+// ============================================================
+// Meetily 设计系统 Token — "温暖工作室 (Warm Workspace)"
+// 来源：design/design-system.md
+// 双层架构：SCSS 变量(编译时) + CSS 变量(运行时)
+// ============================================================
+
+// ---- 暖石灰 (Warm Stone) ----
+$color-stone-50: #FAF9F7;
+$color-stone-100: #F3F1ED;
+$color-stone-200: #E8E4DC;
+$color-stone-300: #D6D0C4;
+$color-stone-400: #A89F8C;
+$color-stone-500: #787165;
+$color-stone-600: #57534A;
+$color-stone-700: #44403A;
+$color-stone-800: #292522;
+$color-stone-900: #1C1917;
+
+// ---- 琥珀暖光 (Amber Glow) ----
+$color-amber-50: #FFFBF0;
+$color-amber-100: #FFF3D6;
+$color-amber-200: #FFE089;
+$color-amber-300: #FFD046;
+$color-amber-400: #F5B400;
+$color-amber-500: #D99A00;
+$color-amber-600: #B37B00;
+
+// ---- 语义色 ----
+$color-success: #10B981;
+$color-error: #EF4444;
+$color-warning: #F59E0B;
+$color-info: #3B82F6;
+
+// ---- 说话人色彩 ----
+$color-speaker-0: #3B82F6;
+$color-speaker-1: #10B981;
+$color-speaker-2: #F59E0B;
+$color-speaker-3: #8B5CF6;
+$color-speaker-4: #EF4444;
+$color-speaker-5: #06B6D4;
+
+// ---- 字体家族 ----
+$font-display: 'Noto Serif SC', 'Source Han Serif CN', serif;
+$font-body: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+$font-mono: 'JetBrains Mono', 'Consolas', monospace;
+
+// ---- 字号层级 ----
+$text-xs: 0.75rem;
+$text-sm: 0.875rem;
+$text-base: 1rem;
+$text-lg: 1.125rem;
+$text-xl: 1.25rem;
+$text-2xl: 1.5rem;
+$text-3xl: 1.875rem;
+$text-4xl: 2.25rem;
+
+// ---- 字重 ----
+$font-normal: 400;
+$font-medium: 500;
+$font-semibold: 600;
+$font-bold: 700;
+
+// ---- 间距系统（4px 模数） ----
+$space-1: 0.25rem;
+$space-2: 0.5rem;
+$space-3: 0.75rem;
+$space-4: 1rem;
+$space-6: 1.5rem;
+$space-8: 2rem;
+$space-10: 2.5rem;
+$space-12: 3rem;
+$space-16: 4rem;
+$space-20: 5rem;
+
+// ---- 圆角 ----
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+$radius-full: 9999px;
+
+// ---- 阴影 ----
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+$shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+$shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+$shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+// ---- 动效 ----
+$transition-fast: 150ms ease-out;
+$transition-normal: 250ms ease-out;
+$transition-slow: 400ms ease-out;
+
+// ---- 响应式断点 ----
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+$breakpoint-xl: 1280px;
+
+// ---- 导出为 CSS 变量 ----
+:root {
+  // Warm Stone
+  --color-stone-50: #{$color-stone-50};
+  --color-stone-100: #{$color-stone-100};
+  --color-stone-200: #{$color-stone-200};
+  --color-stone-300: #{$color-stone-300};
+  --color-stone-400: #{$color-stone-400};
+  --color-stone-500: #{$color-stone-500};
+  --color-stone-600: #{$color-stone-600};
+  --color-stone-700: #{$color-stone-700};
+  --color-stone-800: #{$color-stone-800};
+  --color-stone-900: #{$color-stone-900};
+
+  // Amber Glow
+  --color-amber-50: #{$color-amber-50};
+  --color-amber-100: #{$color-amber-100};
+  --color-amber-200: #{$color-amber-200};
+  --color-amber-300: #{$color-amber-300};
+  --color-amber-400: #{$color-amber-400};
+  --color-amber-500: #{$color-amber-500};
+  --color-amber-600: #{$color-amber-600};
+
+  // 语义色
+  --color-success: #{$color-success};
+  --color-error: #{$color-error};
+  --color-warning: #{$color-warning};
+  --color-info: #{$color-info};
+
+  // 说话人
+  --color-speaker-0: #{$color-speaker-0};
+  --color-speaker-1: #{$color-speaker-1};
+  --color-speaker-2: #{$color-speaker-2};
+  --color-speaker-3: #{$color-speaker-3};
+  --color-speaker-4: #{$color-speaker-4};
+  --color-speaker-5: #{$color-speaker-5};
+
+  // 字体
+  --font-display: #{$font-display};
+  --font-body: #{$font-body};
+  --font-mono: #{$font-mono};
+
+  // 圆角
+  --radius-sm: #{$radius-sm};
+  --radius-md: #{$radius-md};
+  --radius-lg: #{$radius-lg};
+  --radius-xl: #{$radius-xl};
+  --radius-full: #{$radius-full};
+
+  // 阴影
+  --shadow-sm: #{$shadow-sm};
+  --shadow-md: #{$shadow-md};
+  --shadow-lg: #{$shadow-lg};
+  --shadow-xl: #{$shadow-xl};
+
+  // 动效
+  --transition-fast: #{$transition-fast};
+  --transition-normal: #{$transition-normal};
+  --transition-slow: #{$transition-slow};
+}

@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meetily — 会议纪要详情</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-stone-50: #FAF9F7;
+            --color-stone-100: #F3F1ED;
+            --color-stone-200: #E8E4DC;
+            --color-stone-300: #D6D0C4;
+            --color-stone-400: #A89F8C;
+            --color-stone-500: #787165;
+            --color-stone-600: #57534A;
+            --color-stone-700: #44403A;
+            --color-stone-800: #292522;
+            --color-stone-900: #1C1917;
+            --color-amber-50: #FFFBF0;
+            --color-amber-100: #FFF3D6;
+            --color-amber-200: #FFE089;
+            --color-amber-300: #FFD046;
+            --color-amber-400: #F5B400;
+            --color-amber-500: #D99A00;
+            --color-amber-600: #B37B00;
+            --color-success: #10B981;
+            --color-error: #EF4444;
+            --color-warning: #F59E0B;
+            --color-info: #3B82F6;
+            --color-cyan: #06B6D4;
+            --color-purple: #8B5CF6;
+            --font-display: 'Noto Serif SC', serif;
+            --font-body: 'Inter', 'PingFang SC', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--color-stone-50);
+            color: var(--color-stone-800);
+            min-height: 100vh;
+        }
+
+        /* ===== 顶部导航 ===== */
+        .topbar {
+            background: white;
+            border-bottom: 1px solid var(--color-stone-200);
+            padding: 0 32px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .topbar-logo {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            background: linear-gradient(135deg, var(--color-amber-400), var(--color-amber-500));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: var(--color-stone-900);
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .topbar-name {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--color-stone-800);
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-600);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.15s;
+        }
+
+        .btn-icon:hover {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+        }
+
+        .btn-back {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-700);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-back:hover {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+        }
+
+        /* ===== 主内容区 ===== */
+        .main {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 32px;
+        }
+
+        /* 会议标题区 */
+        .detail-header {
+            margin-bottom: 40px;
+        }
+
+        .detail-breadcrumb {
+            font-size: 13px;
+            color: var(--color-stone-400);
+            margin-bottom: 12px;
+        }
+
+        .detail-breadcrumb a {
+            color: var(--color-stone-500);
+            text-decoration: none;
+        }
+
+        .detail-breadcrumb a:hover { color: var(--color-amber-600); }
+
+        .detail-title {
+            font-family: var(--font-display);
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--color-stone-800);
+            margin-bottom: 16px;
+            line-height: 1.3;
+        }
+
+        .detail-meta {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+            color: var(--color-stone-500);
+        }
+
+        .detail-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+        }
+
+        .status-complete {
+            background: #ECFDF5;
+            color: #065F46;
+        }
+        .status-complete .status-dot { background: var(--color-success); }
+
+        /* 操作按钮组 */
+        .detail-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        .btn-action {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+        }
+
+        .btn-action-primary {
+            background: var(--color-amber-400);
+            color: var(--color-stone-900);
+        }
+
+        .btn-action-primary:hover {
+            background: var(--color-amber-500);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(245,180,0,0.25);
+        }
+
+        .btn-action-secondary {
+            background: white;
+            color: var(--color-stone-700);
+            border: 1.5px solid var(--color-stone-200);
+        }
+
+        .btn-action-secondary:hover {
+            border-color: var(--color-stone-300);
+            background: var(--color-stone-50);
+        }
+
+        /* ===== 内容区块 ===== */
+        .content-section {
+            background: white;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-xl);
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--color-stone-100);
+        }
+
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+        }
+
+        .section-icon-amber { background: var(--color-amber-50); color: var(--color-amber-600); }
+        .section-icon-green { background: #ECFDF5; color: var(--color-success); }
+        .section-icon-blue { background: #EFF6FF; color: var(--color-info); }
+        .section-icon-purple { background: #F3E8FF; color: var(--color-purple); }
+
+        /* Markdown 渲染内容 */
+        .markdown-content {
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--color-stone-700);
+        }
+
+        .markdown-content h1 {
+            font-family: var(--font-display);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--color-stone-800);
+            margin: 32px 0 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--color-amber-200);
+        }
+
+        .markdown-content h1:first-child { margin-top: 0; }
+
+        .markdown-content h2 {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            margin: 28px 0 12px;
+        }
+
+        .markdown-content h3 {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            margin: 24px 0 10px;
+        }
+
+        .markdown-content p {
+            margin-bottom: 14px;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin: 12px 0 16px;
+            padding-left: 24px;
+        }
+
+        .markdown-content li {
+            margin-bottom: 8px;
+        }
+
+        .markdown-content li::marker {
+            color: var(--color-amber-500);
+        }
+
+        .markdown-content strong {
+            color: var(--color-stone-800);
+            font-weight: 600;
+        }
+
+        .markdown-content blockquote {
+            border-left: 3px solid var(--color-amber-300);
+            background: var(--color-amber-50);
+            padding: 14px 20px;
+            margin: 16px 0;
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            color: var(--color-stone-700);
+        }
+
+        .markdown-content code {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            background: var(--color-stone-100);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--color-stone-800);
+        }
+
+        .markdown-content pre {
+            background: var(--color-stone-900);
+            color: var(--color-stone-100);
+            padding: 20px;
+            border-radius: var(--radius-md);
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+        }
+
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        .markdown-content th {
+            background: var(--color-stone-100);
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--color-stone-700);
+            border-bottom: 2px solid var(--color-stone-200);
+        }
+
+        .markdown-content td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--color-stone-100);
+        }
+
+        .markdown-content tr:hover td {
+            background: var(--color-stone-50);
+        }
+
+        .markdown-content hr {
+            border: none;
+            border-top: 1px solid var(--color-stone-200);
+            margin: 28px 0;
+        }
+
+        /* 行动项卡片 */
+        .action-items {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 16px;
+            background: var(--color-stone-50);
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+        }
+
+        .action-checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--color-stone-300);
+            border-radius: 5px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .action-checkbox:hover {
+            border-color: var(--color-amber-400);
+        }
+
+        .action-content {
+            flex: 1;
+        }
+
+        .action-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--color-stone-800);
+            margin-bottom: 4px;
+        }
+
+        .action-assignee {
+            font-size: 12px;
+            color: var(--color-stone-500);
+        }
+
+        /* 时间戳转写 */
+        .timestamp-transcript {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .ts-line {
+            display: flex;
+            gap: 14px;
+            padding: 12px 16px;
+            background: var(--color-stone-50);
+            border-radius: var(--radius-md);
+            border-left: 3px solid var(--color-amber-300);
+        }
+
+        .ts-time {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--color-stone-500);
+            flex-shrink: 0;
+            min-width: 140px;
+        }
+
+        .ts-speaker {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-amber-600);
+            flex-shrink: 0;
+            min-width: 70px;
+        }
+
+        .ts-text {
+            font-size: 14px;
+            color: var(--color-stone-700);
+            line-height: 1.6;
+        }
+
+        /* 主题分割 */
+        .theme-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .theme-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            background: white;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            transition: all 0.15s;
+        }
+
+        .theme-item:hover {
+            border-color: var(--color-amber-300);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .theme-number {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-amber-100);
+            color: var(--color-amber-600);
+            font-size: 14px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .theme-name {
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--color-stone-800);
+        }
+
+        /* ===== 模块切换 Tab ===== */
+        .module-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: white;
+            padding: 8px;
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--color-stone-200);
+            position: sticky;
+            top: 80px;
+            z-index: 90;
+            box-shadow: var(--shadow-md);
+        }
+
+        .module-tab {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: var(--radius-lg);
+            font-size: 14px;
+            font-weight: 600;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+            background: transparent;
+            color: var(--color-stone-600);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .module-tab:hover {
+            background: var(--color-stone-50);
+            color: var(--color-stone-800);
+        }
+
+        .module-tab.active {
+            background: var(--color-amber-400);
+            color: var(--color-stone-900);
+            box-shadow: 0 2px 8px rgba(245,180,0,0.3);
+        }
+
+        .module-tab-icon {
+            font-size: 16px;
+        }
+
+        .module-tab-count {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: var(--color-stone-100);
+            color: var(--color-stone-600);
+        }
+
+        .module-tab.active .module-tab-count {
+            background: rgba(0,0,0,0.1);
+            color: var(--color-stone-900);
+        }
+
+        /* 模块内容区域 */
+        .module-content {
+            display: none;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        .module-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航 -->
+    <header class="topbar">
+        <div class="topbar-brand">
+            <div class="topbar-logo">会</div>
+            <span class="topbar-name">Meetily</span>
+        </div>
+
+        <div class="topbar-actions">
+            <button class="btn-back">← 返回会议列表</button>
+            <button class="btn-icon" title="分享">↗</button>
+            <button class="btn-icon" title="导出">⬇</button>
+            <button class="btn-icon" title="更多">⋯</button>
+        </div>
+    </header>
+
+    <!-- 主内容 -->
+    <main class="main">
+        <!-- 标题区 -->
+        <div class="detail-header">
+            <div class="detail-breadcrumb">
+                <a href="#">会议工作空间</a> / <a href="#">全部会议</a> / Q3 产品规划讨论会
+            </div>
+            <h1 class="detail-title">Q3 产品规划讨论会</h1>
+            <div class="detail-meta">
+                <span class="detail-meta-item">📅 2026年7月11日 14:30</span>
+                <span class="detail-meta-item">⏱ 47 分钟</span>
+                <span class="detail-meta-item">👥 4 人参与</span>
+                <span class="status-badge status-complete">
+                    <span class="status-dot"></span> 已完成
+                </span>
+            </div>
+            <div class="detail-actions">
+                <button class="btn-action btn-action-primary">
+                    <span>💬</span> AI 深度对话
+                </button>
+                <button class="btn-action btn-action-secondary">
+                    <span>📋</span> 复制纪要
+                </button>
+                <button class="btn-action btn-action-secondary">
+                    <span>📤</span> 导出 Markdown
+                </button>
+            </div>
+        </div>
+
+        <!-- 模块切换 Tab -->
+        <nav class="module-tabs">
+            <button class="module-tab active" data-module="summary" type="button">
+                <span class="module-tab-icon">📝</span>
+                摘要
+            </button>
+            <button class="module-tab" data-module="action-items" type="button">
+                <span class="module-tab-icon">✅</span>
+                行动项
+                <span class="module-tab-count">3</span>
+            </button>
+            <button class="module-tab" data-module="themes" type="button">
+                <span class="module-tab-icon">🏷</span>
+                讨论主题
+            </button>
+            <button class="module-tab" data-module="transcript" type="button">
+                <span class="module-tab-icon">💬</span>
+                完整转写
+            </button>
+        </nav>
+
+        <!-- AI 摘要模块 -->
+        <section class="content-section module-content active" data-module="summary">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="section-icon section-icon-amber">📝</span>
+                    会议摘要
+                </h2>
+            </div>
+            <div class="markdown-content">
+                <p>本次会议围绕 <strong>Q3 产品规划</strong> 展开，重点讨论了用户反馈数据、搜索体验优化方案和 MVP 实施计划。参会者就技术方案的可行性、工期安排和协作分工达成初步共识。</p>
+                <h3>核心结论</h3>
+                <ul>
+                    <li>搜索体验是用户满意度最低的功能（62%），确定为 Q3 最高优先级</li>
+                    <li>采用分阶段策略：MVP（1 迭代）→ 完整方案（3 迭代）</li>
+                    <li>UI 设计由陈雨萱全程配合开发节奏</li>
+                </ul>
+                <h3>关键数据</h3>
+                <blockquote>
+                    本次用户调研共收集 <strong>127 份有效问卷</strong>，三大核心诉求依次为：搜索体验、导出功能、协作能力。
+                </blockquote>
+            </div>
+        </section>
+
+        <!-- 行动项模块 -->
+        <section class="content-section module-content" data-module="action-items">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="section-icon section-icon-green">✅</span>
+                    行动项
+                </h2>
+                <span style="font-size:13px;color:var(--color-stone-500);">3 项</span>
+            </div>
+            <div class="action-items">
+                <div class="action-item">
+                    <div class="action-checkbox"></div>
+                    <div class="action-content">
+                        <div class="action-text">搜索 MVP 方案设计 — 关键词 + 简单语义匹配</div>
+                        <div class="action-assignee">👤 王浩然 · 截止：1 个迭代</div>
+                    </div>
+                </div>
+                <div class="action-item">
+                    <div class="action-checkbox"></div>
+                    <div class="action-content">
+                        <div class="action-text">UI 设计配合 — 搜索界面改版</div>
+                        <div class="action-assignee">👤 陈雨萱 · 配合开发节奏</div>
+                    </div>
+                </div>
+                <div class="action-item">
+                    <div class="action-checkbox"></div>
+                    <div class="action-content">
+                        <div class="action-text">用户反馈数据整理 — 输出详细报告</div>
+                        <div class="action-assignee">👤 李思琪 · 待确认</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 讨论主题模块 -->
+        <section class="content-section module-content" data-module="themes">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="section-icon section-icon-purple">🏷</span>
+                    讨论主题
+                </h2>
+            </div>
+            <div class="theme-list">
+                <div class="theme-item">
+                    <div class="theme-number">1</div>
+                    <div class="theme-name">用户反馈数据同步</div>
+                </div>
+                <div class="theme-item">
+                    <div class="theme-number">2</div>
+                    <div class="theme-name">搜索体验优化方案</div>
+                </div>
+                <div class="theme-item">
+                    <div class="theme-number">3</div>
+                    <div class="theme-name">MVP 实施与分工</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 完整转写模块 -->
+        <section class="content-section module-content" data-module="transcript">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="section-icon section-icon-blue">💬</span>
+                    完整转写
+                </h2>
+                <span style="font-size:13px;color:var(--color-stone-500);">带时间戳</span>
+            </div>
+            <div class="timestamp-transcript">
+                <div class="ts-line">
+                    <span class="ts-time">[ 00:00 ~ 00:03 ]</span>
+                    <span class="ts-speaker">张明远</span>
+                    <span class="ts-text">Hello hello能听清吗？</span>
+                </div>
+                <div class="ts-line">
+                    <span class="ts-time">[ 00:11 ~ 00:18 ]</span>
+                    <span class="ts-speaker">张明远</span>
+                    <span class="ts-text">会议大概要持续到什么时候？ 稍等稍等。</span>
+                </div>
+                <div class="ts-line">
+                    <span class="ts-time">[ 00:25 ~ 00:32 ]</span>
+                    <span class="ts-speaker">李思琪</span>
+                    <span class="ts-text">好的，我先同步一下上周的用户反馈数据。我们收集了 127 份问卷，核心反馈集中在搜索体验、导出功能和协作能力三个方面。</span>
+                </div>
+                <div class="ts-line">
+                    <span class="ts-time">[ 00:38 ~ 00:45 ]</span>
+                    <span class="ts-speaker">王浩然</span>
+                    <span class="ts-text">搜索这块我们技术侧已经有方案了，主要是引入向量检索。但完整方案需要 3 个迭代。</span>
+                </div>
+                <div class="ts-line">
+                    <span class="ts-time">[ 00:52 ~ 00:58 ]</span>
+                    <span class="ts-speaker">张明远</span>
+                    <span class="ts-text">3 个迭代有点长，能不能先做 MVP？</span>
+                </div>
+                <div class="ts-line">
+                    <span class="ts-time">[ 01:05 ~ 01:12 ]</span>
+                    <span class="ts-speaker">王浩然</span>
+                    <span class="ts-text">可以，如果只做关键词加简单语义的话，1 个迭代能出 demo。</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 模块切换脚本 -->
+    <script>
+        document.querySelectorAll('.module-tab').forEach(tab => {
+            tab.addEventListener('click', function () {
+                const targetModule = this.dataset.module;
+                // 切换 tab 状态
+                document.querySelectorAll('.module-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                // 切换内容显示
+                document.querySelectorAll('.module-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.querySelector(`.module-content[data-module="${targetModule}"]`).classList.add('active');
+                // 滚动到 Tab 区域
+                document.querySelector('.module-tabs').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+    </script>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时语音转文字测试</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>实时语音转文字测试</h1>
+        
+        <!-- 配置区 -->
+        <section class="config-section">
+            <div class="input-group">
+                <label for="apiUrl">WebSocket 地址</label>
+                <input type="text" id="apiUrl" value="ws://localhost:31818/api/v1/audio/ws/realtime" placeholder="WebSocket URL">
+            </div>
+            <div class="input-group">
+                <label for="accessToken">Access Token</label>
+                <input type="text" id="accessToken" placeholder="请输入 JWT Access Token">
+            </div>
+            <div class="button-group">
+                <button id="connectBtn" class="btn btn-primary">连接</button>
+                <button id="disconnectBtn" class="btn btn-secondary" disabled>断开</button>
+            </div>
+        </section>
+
+        <!-- 状态显示 -->
+        <section class="status-section">
+            <div class="status-item">
+                <span class="status-label">连接状态：</span>
+                <span id="connStatus" class="status-badge status-disconnected">未连接</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">录音状态：</span>
+                <span id="recordStatus" class="status-badge status-disconnected">未录音</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">VAD 状态：</span>
+                <span id="vadStatus" class="status-badge status-disconnected">静音</span>
+            </div>
+        </section>
+
+        <!-- 录音控制 -->
+        <section class="control-section">
+            <button id="startRecordBtn" class="btn btn-record" disabled>
+                <span class="mic-icon">🎤</span>
+                开始录音
+            </button>
+            <button id="stopRecordBtn" class="btn btn-stop" disabled>
+                停止录音
+            </button>
+        </section>
+
+        <!-- 转写结果 -->
+        <section class="result-section">
+            <h2>转写结果</h2>
+            <div id="transcriptResult" class="result-box">
+                <p class="placeholder">点击"开始录音"开始语音转文字...</p>
+            </div>
+        </section>
+
+        <!-- 事件日志 -->
+        <section class="log-section">
+            <div class="log-header">
+                <h2>事件日志</h2>
+                <button id="clearLogBtn" class="btn btn-small">清空</button>
+            </div>
+            <div id="eventLog" class="log-box"></div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+// ============================================================
+// SCSS Mixins — 复用样式片段
+// @forward 转发设计 Token 给下游消费者，@use 供本地 mixin 使用
+// ============================================================
+
+@forward './design-tokens.scss';
+@use './design-tokens.scss' as *;
+
+// 卡片悬停效果：上浮 + 阴影加深
+@mixin card-hover {
+  transition: all $transition-normal;
+  &:hover {
+    box-shadow: $shadow-lg;
+    transform: translateY(-3px);
+  }
+}
+
+// 卡片顶部琥珀边悬停浮现
+@mixin card-top-border-hover {
+  position: relative;
+  overflow: hidden;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: $color-amber-300;
+    opacity: 0;
+    transition: opacity $transition-fast;
+  }
+  &:hover::before {
+    opacity: 1;
+  }
+}
+
+// 主要按钮样式
+@mixin btn-primary {
+  background: $color-amber-400;
+  color: $color-stone-900;
+  border: none;
+  border-radius: $radius-md;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+  &:hover {
+    background: $color-amber-500;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245, 180, 0, 0.25);
+  }
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+// 次要按钮样式
+@mixin btn-secondary {
+  background: white;
+  color: $color-stone-700;
+  border: 1.5px solid $color-stone-200;
+  border-radius: $radius-md;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all $transition-fast;
+  &:hover {
+    border-color: $color-stone-300;
+    background: $color-stone-50;
+  }
+}
+
+// 状态徽章基础样式
+@mixin status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: $radius-full;
+}
+
+// 脉冲动画（录音中/处理中指示点）
+@mixin pulse-animation {
+  animation: pulse 1.5s infinite;
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+}
+
+// 滑入动画（新转写行出现）
+@mixin slide-in-animation {
+  animation: slideIn 0.3s ease-out;
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+// 淡入滑入动画（表单切换/模态弹窗）
+@mixin fade-slide-in-animation {
+  animation: fadeSlideIn 0.35s ease-out;
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+// 闪烁光标（流式输出）
+@mixin streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: $color-amber-500;
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 0.8s infinite;
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+}
+
+// 文本截断
+@mixin text-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// 响应式断点
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == sm {
+    @media (max-width: $breakpoint-sm) { @content; }
+  } @else if $breakpoint == md {
+    @media (max-width: $breakpoint-md) { @content; }
+  } @else if $breakpoint == lg {
+    @media (max-width: $breakpoint-lg) { @content; }
+  } @else if $breakpoint == xl {
+    @media (max-width: $breakpoint-xl) { @content; }
+  }
+}

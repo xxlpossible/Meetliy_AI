@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多人会议 - 智能会议纪要助手</title>
+    <link rel="stylesheet" href="meeting.css">
+</head>
+<body>
+    <div class="container">
+        <h1>智能会议纪要助手</h1>
+
+        <!-- 用户信息栏 -->
+        <div class="user-bar">
+            <div class="user-info">当前用户: <span id="currentUsername">-</span></div>
+            <button class="btn btn-secondary" id="logoutBtn">退出登录</button>
+        </div>
+
+        <!-- 创建/加入会议 -->
+        <div class="card" id="lobbyView">
+            <h2>会议大厅</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 280px;">
+                    <div class="input-group">
+                        <label>创建新会议</label>
+                        <input type="text" id="meetingNameInput" placeholder="输入会议名称（可选）">
+                    </div>
+                    <button class="btn btn-primary" id="createMeetingBtn">创建会议</button>
+                </div>
+                <div style="flex: 1; min-width: 280px;">
+                    <div class="input-group">
+                        <label>加入已有会议</label>
+                        <input type="text" id="meetingIdInput" placeholder="输入会议ID">
+                    </div>
+                    <button class="btn btn-success" id="joinMeetingBtn">加入会议</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 会议视图 -->
+        <div class="meeting-view" id="meetingView">
+            <!-- 会议信息 -->
+            <div class="card">
+                <div class="meeting-header">
+                    <div>
+                        <h2 id="meetingTitle" style="margin-bottom: 4px; border: none;">会议中</h2>
+                        <div class="meeting-id-display">会议ID: <span id="currentMeetingId">-</span></div>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-secondary" id="micToggleBtn">关闭麦克风</button>
+                        <button class="btn btn-danger" id="endMeetingBtn" style="display:none;">结束会议</button>
+                        <button class="btn btn-secondary" id="leaveMeetingBtn">离开会议</button>
+                    </div>
+                </div>
+
+                <!-- 状态 -->
+                <div class="status-row">
+                    <span class="status-badge status-disconnected" id="wsStatus">WS: 未连接</span>
+                    <span class="status-badge status-disconnected" id="micStatus">麦克风: 关闭</span>
+                    <span class="status-badge status-disconnected" id="webrtcStatus">WebRTC: 未连接</span>
+                </div>
+
+                <!-- 参与者 -->
+                <div class="participants" id="participantsList"></div>
+            </div>
+
+            <!-- 实时转写 -->
+            <div class="card">
+                <h2>实时转写</h2>
+                <div class="transcript-area" id="transcriptArea">
+                    <p class="placeholder">等待参会者发言...</p>
+                </div>
+
+                <!-- 会后结果 -->
+                <div class="result-area" id="resultArea">
+                    <h3>会议纪要生成中...</h3>
+                    <p id="resultText"><span class="loading-spinner"></span>正在处理音频，请稍候...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 远程音频播放容器（隐藏） -->
+    <div class="remote-audio-container" id="remoteAudioContainer"></div>
+
+    <script src="meeting.js"></script>
+</body>
+</html>

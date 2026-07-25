@@ -1,0 +1,2307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meetily — 知识库管理</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-stone-50: #FAF9F7;
+            --color-stone-100: #F3F1ED;
+            --color-stone-200: #E8E4DC;
+            --color-stone-300: #D6D0C4;
+            --color-stone-400: #A89F8C;
+            --color-stone-500: #787165;
+            --color-stone-600: #57534A;
+            --color-stone-700: #44403A;
+            --color-stone-800: #292522;
+            --color-stone-900: #1C1917;
+            --color-amber-50: #FFFBF0;
+            --color-amber-100: #FFF3D6;
+            --color-amber-200: #FFE089;
+            --color-amber-300: #FFD046;
+            --color-amber-400: #F5B400;
+            --color-amber-500: #D99A00;
+            --color-amber-600: #B37B00;
+            --color-success: #10B981;
+            --color-error: #EF4444;
+            --color-warning: #F59E0B;
+            --color-info: #3B82F6;
+            --color-cyan: #06B6D4;
+            --color-purple: #8B5CF6;
+            --color-rose: #F43F5E;
+            --font-display: 'Noto Serif SC', serif;
+            --font-body: 'Inter', 'PingFang SC', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-xl: 16px;
+            --radius-2xl: 20px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+            --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-lg: 0 4px 16px rgba(0,0,0,0.08);
+            --shadow-xl: 0 8px 32px rgba(0,0,0,0.12);
+            --sidebar-width: 320px;
+            --content-max-width: 1100px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--color-stone-50);
+            color: var(--color-stone-800);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ===== 顶部导航 ===== */
+        .topbar {
+            background: white;
+            border-bottom: 1px solid var(--color-stone-200);
+            padding: 0 32px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbar-logo {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--color-amber-400), var(--color-amber-500));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            color: var(--color-stone-900);
+            font-weight: 700;
+            font-family: var(--font-display);
+        }
+
+        .topbar-name {
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 17px;
+            color: var(--color-stone-800);
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-back {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-700);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-back:hover {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-amber-100);
+            border: 1.5px solid var(--color-amber-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-amber-600);
+        }
+
+        /* ===== 主体双栏布局 ===== */
+        .layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            gap: 0;
+            background: var(--color-stone-50);
+        }
+
+        /* ===== 左侧：知识库列表 ===== */
+        .sidebar {
+            width: var(--sidebar-width);
+            min-width: var(--sidebar-width);
+            background: white;
+            border-right: 1px solid var(--color-stone-200);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 24px 24px 16px;
+            border-bottom: 1px solid var(--color-stone-100);
+        }
+
+        .sidebar-title {
+            font-family: var(--font-display);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            margin-bottom: 16px;
+        }
+
+        .btn-create-kb {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1.5px dashed var(--color-stone-300);
+            border-radius: var(--radius-lg);
+            background: var(--color-stone-50);
+            color: var(--color-stone-600);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-create-kb:hover {
+            border-color: var(--color-amber-400);
+            background: var(--color-amber-50);
+            color: var(--color-amber-600);
+        }
+
+        /* 知识库搜索框 */
+        .kb-search {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1.5px solid var(--color-stone-200);
+            border-radius: var(--radius-lg);
+            background: var(--color-stone-50);
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+
+        .kb-search:focus-within {
+            border-color: var(--color-amber-400);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(245,180,0,0.08);
+        }
+
+        .kb-search input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            color: var(--color-stone-800);
+            outline: none;
+        }
+
+        .kb-search input::placeholder {
+            color: var(--color-stone-400);
+        }
+
+        .kb-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 16px;
+        }
+
+        /* 底部分页 */
+        .kb-pagination {
+            padding: 12px 20px;
+            border-top: 1px solid var(--color-stone-100);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .kb-pagination-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-600);
+            font-size: 12px;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .kb-pagination-btn:hover:not(:disabled) {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+            color: var(--color-stone-800);
+        }
+
+        .kb-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .kb-pagination-btn.active {
+            background: var(--color-amber-400);
+            border-color: var(--color-amber-400);
+            color: var(--color-stone-900);
+        }
+
+        .kb-pagination-text {
+            font-size: 12px;
+            color: var(--color-stone-500);
+            padding: 0 8px;
+            white-space: nowrap;
+        }
+
+        .kb-group-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--color-stone-400);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 14px 10px 8px;
+        }
+
+        .kb-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: 4px;
+            position: relative;
+        }
+
+        .kb-item:hover {
+            background: var(--color-stone-50);
+        }
+
+        .kb-item.active {
+            background: var(--color-amber-50);
+            border: 1px solid var(--color-amber-200);
+        }
+
+        .kb-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 8px;
+            bottom: 8px;
+            width: 3px;
+            background: var(--color-amber-400);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .kb-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .kb-icon-project { background: linear-gradient(135deg, #DBEAFE, #BFDBFE); color: #1D4ED8; }
+        .kb-icon-research { background: linear-gradient(135deg, #F3E8FF, #E9D5FF); color: #7C3AED; }
+        .kb-icon-resource { background: linear-gradient(135deg, #ECFDF5, #A7F3D0); color: #059669; }
+        .kb-icon-team { background: linear-gradient(135deg, #FFF3D6, #FFE089); color: #B37B00; }
+        .kb-icon-general { background: linear-gradient(135deg, #F3F1ED, #E8E4DC); color: #787165; }
+        .kb-icon-client { background: linear-gradient(135deg, #FFE4E6, #FECDD3); color: #E11D48; }
+
+        .kb-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .kb-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .kb-meta {
+            font-size: 12px;
+            color: var(--color-stone-400);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .kb-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 10px;
+            background: var(--color-stone-100);
+            color: var(--color-stone-500);
+        }
+
+        .kb-badge.shared {
+            background: #EFF6FF;
+            color: var(--color-info);
+        }
+
+        /* ===== 右侧：文件区域 ===== */
+        .content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            overflow: hidden;
+            background: var(--color-stone-50);
+        }
+
+        .content-inner {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            padding: 28px 36px 0;
+            overflow: hidden;
+        }
+
+        /* 内容头部 */
+        .content-header {
+            padding: 0 0 20px;
+            flex-shrink: 0;
+        }
+
+        .breadcrumb {
+            font-size: 13px;
+            color: var(--color-stone-400);
+            margin-bottom: 14px;
+        }
+
+        .breadcrumb a {
+            color: var(--color-stone-500);
+            text-decoration: none;
+        }
+
+        .breadcrumb a:hover { color: var(--color-amber-600); }
+
+        .content-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .content-title-group {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .content-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+
+        .content-title {
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--color-stone-800);
+            margin-bottom: 4px;
+        }
+
+        .content-desc {
+            font-size: 13px;
+            color: var(--color-stone-500);
+        }
+
+        .content-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border: none;
+            border-radius: var(--radius-md);
+            background: var(--color-amber-400);
+            color: var(--color-stone-900);
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-amber-500);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(245,180,0,0.25);
+        }
+
+        .btn-secondary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            border: 1.5px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-700);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+        }
+
+        .btn-danger {
+            border-color: #FECACA;
+            color: var(--color-error);
+            background: #FEF2F2;
+        }
+
+        .btn-danger:hover {
+            background: #FEE2E2;
+            border-color: #FCA5A5;
+            color: #DC2626;
+        }
+
+        /* 操作栏 */
+        .action-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 0 16px;
+            flex-shrink: 0;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            max-width: 320px;
+            padding: 9px 14px;
+            border: 1.5px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: var(--color-stone-50);
+            transition: all 0.2s;
+        }
+
+        .search-box:focus-within {
+            border-color: var(--color-amber-400);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(245,180,0,0.08);
+        }
+
+        .search-box input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            color: var(--color-stone-800);
+            outline: none;
+        }
+
+        .search-box input::placeholder {
+            color: var(--color-stone-400);
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-chip {
+            padding: 7px 14px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: 20px;
+            background: white;
+            color: var(--color-stone-600);
+            font-size: 12px;
+            font-weight: 500;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .filter-chip:hover {
+            background: var(--color-stone-50);
+        }
+
+        .filter-chip.active {
+            background: var(--color-amber-50);
+            border-color: var(--color-amber-200);
+            color: var(--color-amber-600);
+        }
+
+        /* 统计条 */
+        .stats-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            flex-shrink: 0;
+        }
+
+        .stat-card {
+            flex: 1;
+            background: white;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-xl);
+            padding: 16px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.2s;
+            cursor: pointer;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .stat-card:hover {
+            border-color: var(--color-amber-200);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .stat-card.active {
+            background: var(--color-amber-50);
+            border-color: var(--color-amber-300);
+        }
+
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+
+        .stat-icon-text { background: #EFF6FF; color: var(--color-info); }
+        .stat-icon-audio { background: #ECFDF5; color: var(--color-success); }
+        .stat-icon-image { background: #F3E8FF; color: var(--color-purple); }
+        .stat-icon-video { background: #FFF8E1; color: var(--color-warning); }
+        .stat-icon-other { background: var(--color-stone-100); color: var(--color-stone-500); }
+
+        .stat-info {
+            flex: 1;
+        }
+
+        .stat-count {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--color-stone-800);
+            line-height: 1.1;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--color-stone-500);
+            margin-top: 2px;
+        }
+
+        /* 文件滚动区域 */
+        .file-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 0 24px;
+            min-height: 0;
+        }
+
+        /* 纯文件列表 */
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* 文件分页 */
+        .file-pagination {
+            padding: 16px 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .file-pagination-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-600);
+            font-size: 12px;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .file-pagination-btn:hover:not(:disabled) {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+            color: var(--color-stone-800);
+        }
+
+        .file-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .file-pagination-btn.active {
+            background: var(--color-amber-400);
+            border-color: var(--color-amber-400);
+            color: var(--color-stone-900);
+        }
+
+        .file-pagination-text {
+            font-size: 12px;
+            color: var(--color-stone-500);
+            padding: 0 10px;
+            white-space: nowrap;
+        }
+
+        .file-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            background: white;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-lg);
+            transition: all 0.2s;
+        }
+
+        .file-card:hover {
+            border-color: var(--color-amber-200);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-1px);
+        }
+
+        /* 文件类型图标 */
+        .file-type-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+
+        .type-text { background: #EFF6FF; color: var(--color-info); }
+        .type-audio { background: #ECFDF5; color: var(--color-success); }
+        .type-image { background: #F3E8FF; color: var(--color-purple); }
+        .type-video { background: #FFF8E1; color: var(--color-warning); }
+        .type-other { background: var(--color-stone-100); color: var(--color-stone-500); }
+
+        .file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--color-stone-500);
+        }
+
+        .file-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .file-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .status-processing { background: #FFF8E1; color: #F57F17; }
+        .status-processing .status-dot {
+            background: var(--color-warning);
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-complete { background: #ECFDF5; color: #065F46; }
+        .status-complete .status-dot { background: var(--color-success); }
+
+        .status-error { background: #FEF2F2; color: #991B1B; }
+        .status-error .status-dot { background: var(--color-error); }
+
+        /* 进度条 */
+        .progress-bar {
+            width: 60px;
+            height: 3px;
+            background: var(--color-stone-100);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--color-amber-400);
+            border-radius: 2px;
+            transition: width 0.3s;
+        }
+
+        /* 文件操作 */
+        .file-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .file-action-btn {
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: 6px;
+            background: white;
+            color: var(--color-stone-500);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            transition: all 0.15s;
+        }
+
+        .file-action-btn:hover {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+            color: var(--color-stone-700);
+        }
+
+        .file-action-btn.danger:hover {
+            background: #FEF2F2;
+            border-color: #FECACA;
+            color: var(--color-error);
+        }
+
+        /* 错误信息展开 */
+        .error-detail {
+            display: none;
+            margin-top: 10px;
+            padding: 10px 14px;
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            border-radius: var(--radius-md);
+            font-size: 12px;
+            color: #991B1B;
+            line-height: 1.5;
+        }
+
+        .file-card.expanded .error-detail {
+            display: block;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--color-stone-400);
+        }
+
+        .empty-state-icon {
+            font-size: 56px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state h3 {
+            font-family: var(--font-display);
+            font-size: 17px;
+            color: var(--color-stone-600);
+            margin-bottom: 6px;
+        }
+
+        .empty-state p {
+            font-size: 13px;
+        }
+
+        /* 无选中知识库提示 */
+        .no-selection {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            text-align: center;
+        }
+
+        .no-selection-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .no-selection h3 {
+            font-family: var(--font-display);
+            font-size: 18px;
+            color: var(--color-stone-600);
+            margin-bottom: 8px;
+        }
+
+        .no-selection p {
+            font-size: 13px;
+            color: var(--color-stone-400);
+        }
+
+        /* 模态弹窗 */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(2px);
+        }
+
+        .modal {
+            background: white;
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            width: 100%;
+            max-width: 460px;
+            box-shadow: var(--shadow-xl);
+            animation: modalIn 0.25s ease-out;
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+        }
+
+        .modal-close {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: var(--color-stone-100);
+            border-radius: 7px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-stone-500);
+            transition: all 0.15s;
+        }
+
+        .modal-close:hover {
+            background: var(--color-stone-200);
+            color: var(--color-stone-700);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-stone-700);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-family: var(--font-body);
+            color: var(--color-stone-800);
+            background: white;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: var(--color-amber-400);
+            box-shadow: 0 0 0 3px rgba(245,180,0,0.08);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23787165' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        /* 上传区域 */
+        .upload-zone {
+            border: 2px dashed var(--color-stone-300);
+            border-radius: var(--radius-xl);
+            padding: 32px;
+            text-align: center;
+            background: var(--color-stone-50);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--color-amber-400);
+            background: var(--color-amber-50);
+        }
+
+        .upload-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: var(--color-stone-400);
+        }
+
+        .upload-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--color-stone-600);
+            margin-bottom: 4px;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: var(--color-stone-400);
+        }
+
+        /* ===== 授权用户弹窗 ===== */
+        .grant-modal {
+            background: white;
+            border-radius: var(--radius-xl);
+            padding: 28px;
+            width: 100%;
+            max-width: 520px;
+            box-shadow: var(--shadow-xl);
+            animation: modalIn 0.25s ease-out;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .grant-modal .modal-header {
+            margin-bottom: 16px;
+            flex-shrink: 0;
+        }
+
+        .grant-modal .modal-title {
+            font-family: var(--font-display);
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-stone-800);
+        }
+
+        .grant-kb-name {
+            font-size: 13px;
+            color: var(--color-stone-500);
+            margin-top: 4px;
+        }
+
+        .grant-search {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1.5px solid var(--color-stone-200);
+            border-radius: var(--radius-lg);
+            background: var(--color-stone-50);
+            transition: all 0.2s;
+            margin-bottom: 14px;
+            flex-shrink: 0;
+        }
+
+        .grant-search:focus-within {
+            border-color: var(--color-amber-400);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(245,180,0,0.08);
+        }
+
+        .grant-search input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            color: var(--color-stone-800);
+            outline: none;
+        }
+
+        .grant-search input::placeholder {
+            color: var(--color-stone-400);
+        }
+
+        .grant-selected-count {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-amber-600);
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        .grant-user-list {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-lg);
+            padding: 4px;
+            min-height: 200px;
+        }
+
+        .grant-user-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .grant-user-item:hover {
+            background: var(--color-stone-50);
+        }
+
+        .grant-user-item.selected {
+            background: var(--color-amber-50);
+        }
+
+        .grant-user-checkbox {
+            width: 20px;
+            height: 20px;
+            border: 1.5px solid var(--color-stone-300);
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.15s;
+            background: white;
+        }
+
+        .grant-user-item.selected .grant-user-checkbox {
+            background: var(--color-amber-400);
+            border-color: var(--color-amber-400);
+        }
+
+        .grant-user-checkbox svg {
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .grant-user-item.selected .grant-user-checkbox svg {
+            opacity: 1;
+        }
+
+        .grant-user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-stone-100);
+            border: 1.5px solid var(--color-stone-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-stone-600);
+            flex-shrink: 0;
+        }
+
+        .grant-user-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .grant-user-name {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--color-stone-800);
+        }
+
+        .grant-user-id {
+            font-size: 11px;
+            color: var(--color-stone-400);
+            font-family: var(--font-mono);
+            margin-top: 1px;
+        }
+
+        .grant-pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 12px 0 0;
+            flex-shrink: 0;
+        }
+
+        .grant-pagination-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--color-stone-200);
+            border-radius: var(--radius-md);
+            background: white;
+            color: var(--color-stone-600);
+            font-size: 12px;
+            font-family: var(--font-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .grant-pagination-btn:hover:not(:disabled) {
+            background: var(--color-stone-50);
+            border-color: var(--color-stone-300);
+            color: var(--color-stone-800);
+        }
+
+        .grant-pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .grant-pagination-btn.active {
+            background: var(--color-amber-400);
+            border-color: var(--color-amber-400);
+            color: var(--color-stone-900);
+        }
+
+        .grant-pagination-text {
+            font-size: 12px;
+            color: var(--color-stone-500);
+            padding: 0 8px;
+            white-space: nowrap;
+        }
+
+        .grant-modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 16px;
+            flex-shrink: 0;
+        }
+
+        /* 动画 */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--color-stone-300);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--color-stone-400);
+        }
+
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            :root { --sidebar-width: 280px; }
+            .stats-bar { flex-wrap: wrap; }
+            .stat-card { flex: 0 0 calc(50% - 8px); }
+        }
+
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar {
+                width: 100%;
+                max-height: 200px;
+                border-right: none;
+                border-bottom: 1px solid var(--color-stone-200);
+            }
+            .sidebar-header { padding: 14px 16px; }
+            .kb-search { display: none; }
+            .kb-list { display: flex; overflow-x: auto; gap: 8px; padding: 10px; }
+            .kb-group-label { display: none; }
+            .kb-item { flex: 0 0 160px; margin-bottom: 0; }
+            .kb-info { display: none; }
+            .kb-item.active::before { display: none; }
+            .btn-create-kb { width: 160px; flex-shrink: 0; }
+            .kb-pagination { display: none; }
+            .content-inner { padding: 20px 16px 0; }
+            .content-title-row { flex-direction: column; align-items: flex-start; gap: 12px; }
+            .action-bar { flex-direction: column; gap: 10px; padding: 0 0 12px; }
+            .search-box { max-width: 100%; }
+            .stats-bar { margin-bottom: 16px; }
+            .file-scroll-area { padding: 0 0 16px; }
+            .file-pagination { padding: 12px 0 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航 -->
+    <header class="topbar">
+        <div class="topbar-brand">
+            <div class="topbar-logo">会</div>
+            <span class="topbar-name">Meetily</span>
+        </div>
+        <div class="topbar-actions">
+            <button class="btn-back">← 返回会议列表</button>
+            <div class="user-avatar">张</div>
+        </div>
+    </header>
+
+    <!-- 主体双栏布局 -->
+    <div class="layout">
+
+        <!-- ===== 左侧：知识库列表 ===== -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">知识库</h2>
+                <button class="btn-create-kb" id="openCreateKbModal">
+                    <span style="font-size:16px;">+</span>
+                    新建知识库
+                </button>
+                <div class="kb-search" style="margin-top:14px;">
+                    <span>🔍</span>
+                    <input type="text" placeholder="搜索知识库..." id="kbSearchInput">
+                </div>
+            </div>
+            <div class="kb-list" id="kbList">
+                <div class="kb-group-label">我的知识库</div>
+                
+                <!-- 知识库1：活跃 -->
+                <div class="kb-item active" data-kb="1" data-name="Q3 产品规划资料">
+                    <div class="kb-icon kb-icon-project">📁</div>
+                    <div class="kb-info">
+                        <div class="kb-name">Q3 产品规划资料</div>
+                        <div class="kb-meta">
+                            <span>12 个文件</span>
+                            <span class="kb-badge shared">已共享</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 知识库2 -->
+                <div class="kb-item" data-kb="2" data-name="用户调研报告">
+                    <div class="kb-icon kb-icon-research">🔬</div>
+                    <div class="kb-info">
+                        <div class="kb-name">用户调研报告</div>
+                        <div class="kb-meta">
+                            <span>8 个文件</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 知识库3 -->
+                <div class="kb-item" data-kb="3" data-name="技术知识沉淀">
+                    <div class="kb-icon kb-icon-resource">📚</div>
+                    <div class="kb-info">
+                        <div class="kb-name">技术知识沉淀</div>
+                        <div class="kb-meta">
+                            <span>5 个文件</span>
+                            <span class="kb-badge shared">已共享</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 知识库4 -->
+                <div class="kb-item" data-kb="4" data-name="客户需求文档">
+                    <div class="kb-icon kb-icon-client">👥</div>
+                    <div class="kb-info">
+                        <div class="kb-name">客户需求文档</div>
+                        <div class="kb-meta">
+                            <span>15 个文件</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kb-group-label" style="margin-top:6px;">团队共享</div>
+
+                <!-- 知识库5 -->
+                <div class="kb-item" data-kb="5" data-name="团队协作手册">
+                    <div class="kb-icon kb-icon-team">👨‍💼</div>
+                    <div class="kb-info">
+                        <div class="kb-name">团队协作手册</div>
+                        <div class="kb-meta">
+                            <span>6 个文件</span>
+                            <span class="kb-badge shared">已共享</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 知识库6 -->
+                <div class="kb-item" data-kb="6" data-name="通用参考资料">
+                    <div class="kb-icon kb-icon-general">📦</div>
+                    <div class="kb-info">
+                        <div class="kb-name">通用参考资料</div>
+                        <div class="kb-meta">
+                            <span>3 个文件</span>
+                            <span class="kb-badge shared">已共享</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 底部分页 -->
+            <div class="kb-pagination">
+                <button class="kb-pagination-btn" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <button class="kb-pagination-btn active">1</button>
+                <button class="kb-pagination-btn">2</button>
+                <button class="kb-pagination-btn">3</button>
+                <button class="kb-pagination-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ===== 右侧：文件详情区 ===== -->
+        <main class="content" id="contentArea">
+            <div class="content-inner">
+            <!-- 默认内容 -->
+            <div id="kbDetail">
+                <!-- 面包屑 -->
+                <div class="content-header">
+                    <div class="breadcrumb">
+                        <a href="#">工作台</a> / Q3 产品规划资料
+                    </div>
+                    <div class="content-title-row">
+                        <div class="content-title-group">
+                            <div class="content-icon kb-icon-project">📁</div>
+                            <div>
+                                <h1 class="content-title">Q3 产品规划资料</h1>
+                                <p class="content-desc">产品规划阶段的核心参考资料，包含市场分析、竞品研究、用户数据等</p>
+                            </div>
+                        </div>
+                        <div class="content-actions">
+                            <button class="btn-secondary" id="openEditKbModal">
+                                <span>✎</span> 编辑
+                            </button>
+                            <button class="btn-secondary btn-danger" id="openDeleteKbModal">
+                                <span>🗑</span> 删除
+                            </button>
+                            <button class="btn-primary" id="openUploadBtn">
+                                <span>⬆</span> 上传文件
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作栏 -->
+                <div class="action-bar">
+                    <div class="search-box">
+                        <span>🔍</span>
+                        <input type="text" placeholder="搜索文件名、标签..." id="searchInput">
+                    </div>
+                    <div class="filter-group">
+                        <button class="filter-chip active" data-filter="all">全部</button>
+                        <button class="filter-chip" data-filter="text">📄 文本</button>
+                        <button class="filter-chip" data-filter="audio">🎵 音频</button>
+                        <button class="filter-chip" data-filter="image">🖼 图片</button>
+                        <button class="filter-chip" data-filter="video">🎬 视频</button>
+                    </div>
+                </div>
+
+                <!-- 分类统计卡 -->
+                <div class="stats-bar">
+                    <div class="stat-card active" data-filter="all">
+                        <div class="stat-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </div>
+                        <div class="stat-info">
+                            <div class="stat-count">12</div>
+                            <div class="stat-label">全部文件</div>
+                        </div>
+                    </div>
+                    <div class="stat-card" data-filter="text">
+                        <div class="stat-icon stat-icon-text">📄</div>
+                        <div class="stat-info">
+                            <div class="stat-count">5</div>
+                            <div class="stat-label">文本文档</div>
+                        </div>
+                    </div>
+                    <div class="stat-card" data-filter="audio">
+                        <div class="stat-icon stat-icon-audio">🎵</div>
+                        <div class="stat-info">
+                            <div class="stat-count">3</div>
+                            <div class="stat-label">音频文件</div>
+                        </div>
+                    </div>
+                    <div class="stat-card" data-filter="image">
+                        <div class="stat-icon stat-icon-image">🖼</div>
+                        <div class="stat-info">
+                            <div class="stat-count">3</div>
+                            <div class="stat-label">图片素材</div>
+                        </div>
+                    </div>
+                    <div class="stat-card" data-filter="video">
+                        <div class="stat-icon stat-icon-video">🎬</div>
+                        <div class="stat-info">
+                            <div class="stat-count">1</div>
+                            <div class="stat-label">视频资料</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 文件滚动区 -->
+                <div class="file-scroll-area">
+                    <div class="file-list">
+                        <div class="file-card">
+                            <div class="file-type-icon type-text">📄</div>
+                            <div class="file-info">
+                                <div class="file-name">用户反馈数据报告_2026Q2.pdf</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 今天 14:35</span>
+                                    <span class="file-meta-item">📐 2.4 MB</span>
+                                    <span class="file-meta-item">🧩 24 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-audio">🎵</div>
+                            <div class="file-info">
+                                <div class="file-name">会议补充录音_20260711.mp3</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 今天 14:40</span>
+                                    <span class="file-meta-item">📐 8.1 MB</span>
+                                    <span class="file-meta-item">⏳ 处理中...</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-processing">
+                                    <span class="status-dot"></span> 正在解析
+                                </span>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 65%;"></div>
+                                </div>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" disabled style="opacity:0.4;">👁</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-image">🖼</div>
+                            <div class="file-info">
+                                <div class="file-name">产品架构图_v3.png</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 今天 14:42</span>
+                                    <span class="file-meta-item">📐 1.8 MB</span>
+                                    <span class="file-meta-item">🧩 6 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-text">📋</div>
+                            <div class="file-info">
+                                <div class="file-name">竞品分析报告_2026H1.docx</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 昨天 10:20</span>
+                                    <span class="file-meta-item">📐 856 KB</span>
+                                    <span class="file-meta-item">🧩 18 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-video">🎬</div>
+                            <div class="file-info">
+                                <div class="file-name">产品演示视频_主功能流.mp4</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 昨天 16:20</span>
+                                    <span class="file-meta-item">📐 45.6 MB</span>
+                                    <span class="file-meta-item">🧩 12 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-text">📝</div>
+                            <div class="file-info">
+                                <div class="file-name">产品需求文档_PRD_v3.2.md</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 07-08 16:42</span>
+                                    <span class="file-meta-item">📐 128 KB</span>
+                                    <span class="file-meta-item">🧩 32 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card">
+                            <div class="file-type-icon type-audio">🎵</div>
+                            <div class="file-info">
+                                <div class="file-name">用户访谈录音_0709.wav</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 07-09 17:00</span>
+                                    <span class="file-meta-item">📐 15.3 MB</span>
+                                    <span class="file-meta-item">🧩 42 个分块</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-complete">
+                                    <span class="status-dot"></span> 解析完成
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="查看">👁</button>
+                                <button class="file-action-btn" title="下载">⬇</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                        </div>
+
+                        <div class="file-card" id="errorCard1">
+                            <div class="file-type-icon type-text">📑</div>
+                            <div class="file-info">
+                                <div class="file-name">API_接口设计规范_终版.pdf</div>
+                                <div class="file-meta">
+                                    <span class="file-meta-item">📅 07-06 09:15</span>
+                                    <span class="file-meta-item">📐 3.2 MB</span>
+                                </div>
+                            </div>
+                            <div class="file-status">
+                                <span class="status-badge status-error" style="cursor:pointer;" onclick="document.getElementById('errorCard1').classList.toggle('expanded')">
+                                    <span class="status-dot"></span> 解析失败 ▼
+                                </span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="file-action-btn" title="重试">🔄</button>
+                                <button class="file-action-btn danger" title="删除">🗑</button>
+                            </div>
+                            <div class="error-detail">
+                                <strong>错误原因：</strong> PDF 文件为扫描版，无法提取文字内容。请先使用 OCR 工具处理后再上传。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 文件分页 -->
+                <div class="file-pagination">
+                    <button class="file-pagination-btn" disabled>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
+                    <button class="file-pagination-btn active">1</button>
+                    <button class="file-pagination-btn">2</button>
+                    <button class="file-pagination-btn">3</button>
+                    <span class="file-pagination-text">共 12 个文件</span>
+                    <button class="file-pagination-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===== 新建知识库模态弹窗 ===== -->
+    <div class="modal-overlay" id="createKbModal" style="display:none;">
+        <div class="modal" style="max-width:500px; padding:22px 26px;">
+            <div class="modal-header" style="margin-bottom:12px;">
+                <h2 class="modal-title">新建知识库</h2>
+                <button class="modal-close" onclick="closeModal('createKbModal')">✕</button>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" style="font-size:13px; margin-bottom:4px;">知识库名称</label>
+                <input type="text" class="form-input" placeholder="输入知识库名称，如：用户调研报告" style="padding:8px 12px; font-size:13px;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" style="font-size:13px; margin-bottom:4px;">描述（可选）</label>
+                <textarea class="form-input form-textarea" placeholder="描述这个知识库的用途和内容..." style="padding:8px 12px; font-size:13px; min-height:60px;"></textarea>
+            </div>
+            <div style="border-top:1px solid var(--color-stone-200); padding-top:14px; margin-top:12px;">
+                <label class="form-label" style="font-size:13px; font-weight:600; color:var(--color-stone-800); margin-bottom:8px;">
+                    <span style="margin-right:4px;">🔐</span>新增授权用户
+                </label>
+                <p style="font-size:11px; color:var(--color-stone-500); margin:0 0 8px;">选择可访问该知识库的用户</p>
+                <div class="grant-search" style="margin-bottom:6px; padding:7px 10px;">
+                    <span style="font-size:12px;">🔍</span>
+                    <input type="text" placeholder="搜索用户名..." id="createKbUserSearch" style="font-size:12px;">
+                </div>
+                <div class="grant-selected-count" id="createKbSelectedCount" style="font-size:12px; margin-bottom:6px;">已选 0 个用户</div>
+                <div class="grant-user-list" id="createKbUserList" style="max-height:160px;">
+                    <div class="grant-user-item" data-user-id="1023" data-username="张明远" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">张</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">张明远</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1027" data-username="李思怡" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">李</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">李思怡</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1035" data-username="王浩然" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">王</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">王浩然</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1042" data-username="赵雨晴" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">赵</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">赵雨晴</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1051" data-username="陈嘉伟" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">陈</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">陈嘉伟</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1058" data-username="刘诗涵" data-page="2" style="display:none;">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">刘</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">刘诗涵</div></div>
+                    </div>
+                </div>
+                <div class="grant-pagination" id="createKbUserPagination" style="padding:8px 0 0;">
+                    <button class="grant-pagination-btn" disabled style="width:28px;height:28px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button>
+                    <button class="grant-pagination-btn active" data-page="1" style="width:28px;height:28px;font-size:11px;">1</button>
+                    <button class="grant-pagination-btn" data-page="2" style="width:28px;height:28px;font-size:11px;">2</button>
+                    <span class="grant-pagination-text" style="font-size:11px;">共 6 个用户</span>
+                    <button class="grant-pagination-btn" style="width:28px;height:28px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button>
+                </div>
+            </div>
+            <div class="modal-footer" style="margin-top:14px; gap:8px;">
+                <button class="btn-secondary" onclick="closeModal('createKbModal')" style="padding:8px 16px; font-size:13px;">取消</button>
+                <button class="btn-primary" id="confirmCreateKb" style="padding:8px 16px; font-size:13px;">确认创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 上传文件模态弹窗 ===== -->
+    <div class="modal-overlay" id="uploadModal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">上传知识文件</h2>
+                <button class="modal-close" onclick="document.getElementById('uploadModal').style.display='none'">✕</button>
+            </div>
+            <div>
+                <div class="upload-zone" style="margin:0;">
+                    <div class="upload-icon">⬆</div>
+                    <div class="upload-text">点击或拖拽文件到此处</div>
+                    <div class="upload-hint">支持 .pdf .docx .txt .md .mp3 .wav .jpg .png .mp4 等格式<br>最大 100MB</div>
+                </div>
+                <div class="form-group" style="margin-top:14px;">
+                    <label class="form-label">文件将上传到：<strong>Q3 产品规划资料</strong></label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="document.getElementById('uploadModal').style.display='none'">取消</button>
+                <button class="btn-primary">确认上传</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 授权用户模态弹窗 ===== -->
+    <div class="modal-overlay" id="grantModal" style="display:none;">
+        <div class="grant-modal">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">新增授权用户</h2>
+                    <p class="grant-kb-name">知识库：Q3 产品规划资料</p>
+                </div>
+                <button class="modal-close" onclick="document.getElementById('grantModal').style.display='none'">✕</button>
+            </div>
+            <!-- 搜索框 -->
+            <div class="grant-search">
+                <span>🔍</span>
+                <input type="text" placeholder="搜索用户名..." id="grantSearchInput">
+            </div>
+            <!-- 已选数量 -->
+            <div class="grant-selected-count" id="grantSelectedCount">已选 0 个用户</div>
+            <!-- 用户列表 -->
+            <div class="grant-user-list" id="grantUserList">
+                <!-- 第1页 -->
+                <div class="grant-user-item" data-user-id="1023" data-username="张明远" data-page="1">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar" style="background:var(--color-amber-100);">张</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">张明远</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1027" data-username="李思怡" data-page="1">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">李</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">李思怡</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1035" data-username="王浩然" data-page="1">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">王</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">王浩然</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1042" data-username="赵雨晴" data-page="1">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">赵</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">赵雨晴</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1051" data-username="陈嘉伟" data-page="1">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">陈</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">陈嘉伟</div>
+                    </div>
+                </div>
+                <!-- 第2页 -->
+                <div class="grant-user-item" data-user-id="1058" data-username="刘诗涵" data-page="2" style="display:none;">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">刘</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">刘诗涵</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1063" data-username="周子轩" data-page="2" style="display:none;">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">周</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">周子轩</div>
+                    </div>
+                </div>
+                <div class="grant-user-item" data-user-id="1072" data-username="吴欣悦" data-page="2" style="display:none;">
+                    <div class="grant-user-checkbox">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </div>
+                    <div class="grant-user-avatar">吴</div>
+                    <div class="grant-user-info" style="text-align:center;">
+                        <div class="grant-user-name">吴欣悦</div>
+                    </div>
+                </div>
+            </div>
+            <!-- 分页 -->
+            <div class="grant-pagination">
+                <button class="grant-pagination-btn" disabled>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <button class="grant-pagination-btn active" data-page="1">1</button>
+                <button class="grant-pagination-btn" data-page="2">2</button>
+                <span class="grant-pagination-text">共 8 个用户</span>
+                <button class="grant-pagination-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+            </div>
+            <!-- 底部按钮 -->
+            <div class="grant-modal-footer">
+                <button class="btn-secondary" onclick="document.getElementById('grantModal').style.display='none'">取消</button>
+                <button class="btn-primary" id="confirmGrantBtn">
+                    <span>✓</span> 确认授权
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 编辑知识库模态弹窗 ===== -->
+    <div class="modal-overlay" id="editKbModal" style="display:none;">
+        <div class="modal" style="max-width:500px; padding:22px 26px;">
+            <div class="modal-header" style="margin-bottom:12px;">
+                <h2 class="modal-title">编辑知识库</h2>
+                <button class="modal-close" onclick="closeModal('editKbModal')">✕</button>
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" style="font-size:13px; margin-bottom:4px;">知识库名称</label>
+                <input type="text" class="form-input" id="editKbName" value="Q3 产品规划资料" style="padding:8px 12px; font-size:13px;">
+            </div>
+            <div class="form-group" style="margin-bottom:10px;">
+                <label class="form-label" style="font-size:13px; margin-bottom:4px;">描述</label>
+                <textarea class="form-input form-textarea" id="editKbDesc" style="padding:8px 12px; font-size:13px; min-height:60px;">产品规划阶段的核心参考资料，包含市场分析、竞品研究、用户数据等</textarea>
+            </div>
+            <div style="border-top:1px solid var(--color-stone-200); padding-top:14px; margin-top:12px;">
+                <label class="form-label" style="font-size:13px; font-weight:600; color:var(--color-stone-800); margin-bottom:8px;">
+                    <span style="margin-right:4px;">🔐</span>授权用户管理
+                </label>
+                <p style="font-size:11px; color:var(--color-stone-500); margin:0 0 8px;">添加或移除可访问该知识库的用户</p>
+                <div class="grant-search" style="margin-bottom:6px; padding:7px 10px;">
+                    <span style="font-size:12px;">🔍</span>
+                    <input type="text" placeholder="搜索用户名..." id="editKbUserSearch" style="font-size:12px;">
+                </div>
+                <div class="grant-selected-count" id="editKbSelectedCount" style="font-size:12px; margin-bottom:6px;">已选 0 个用户</div>
+                <div class="grant-user-list" id="editKbUserList" style="max-height:160px;">
+                    <div class="grant-user-item selected" data-user-id="1023" data-username="张明远" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;background:var(--color-amber-100);">张</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">张明远</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1027" data-username="李思怡" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">李</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">李思怡</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1035" data-username="王浩然" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">王</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">王浩然</div></div>
+                    </div>
+                    <div class="grant-user-item selected" data-user-id="1042" data-username="赵雨晴" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;background:var(--color-amber-100);">赵</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">赵雨晴</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1051" data-username="陈嘉伟" data-page="1">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">陈</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">陈嘉伟</div></div>
+                    </div>
+                    <div class="grant-user-item" data-user-id="1058" data-username="刘诗涵" data-page="2" style="display:none;">
+                        <div class="grant-user-checkbox"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5"><path d="M20 6L9 17l-5-5"/></svg></div>
+                        <div class="grant-user-avatar" style="width:28px;height:28px;font-size:12px;">刘</div>
+                        <div class="grant-user-info" style="text-align:center;"><div class="grant-user-name" style="font-size:13px;">刘诗涵</div></div>
+                    </div>
+                </div>
+                <div class="grant-pagination" id="editKbUserPagination" style="padding:8px 0 0;">
+                    <button class="grant-pagination-btn" disabled style="width:28px;height:28px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button>
+                    <button class="grant-pagination-btn active" data-page="1" style="width:28px;height:28px;font-size:11px;">1</button>
+                    <button class="grant-pagination-btn" data-page="2" style="width:28px;height:28px;font-size:11px;">2</button>
+                    <span class="grant-pagination-text" style="font-size:11px;">共 6 个用户</span>
+                    <button class="grant-pagination-btn" style="width:28px;height:28px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button>
+                </div>
+            </div>
+            <div class="modal-footer" style="margin-top:14px; gap:8px;">
+                <button class="btn-secondary" onclick="closeModal('editKbModal')" style="padding:8px 16px; font-size:13px;">取消</button>
+                <button class="btn-primary" id="confirmEditKb" style="padding:8px 16px; font-size:13px;">保存修改</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 删除知识库确认模态弹窗 ===== -->
+    <div class="modal-overlay" id="deleteKbModal" style="display:none;">
+        <div class="modal" style="max-width:400px; padding:22px 26px;">
+            <div class="modal-header" style="margin-bottom:12px;">
+                <h2 class="modal-title">删除知识库</h2>
+                <button class="modal-close" onclick="closeModal('deleteKbModal')">✕</button>
+            </div>
+            <div style="text-align:center; padding:16px 0 12px;">
+                <div style="font-size:40px; margin-bottom:12px;">⚠️</div>
+                <p style="font-size:14px; font-weight:600; color:var(--color-stone-800); margin-bottom:6px;">
+                    确定要删除知识库「Q3 产品规划资料」吗？
+                </p>
+                <p style="font-size:12px; color:var(--color-stone-500); line-height:1.5;">
+                    此操作将永久删除该知识库及其包含的所有文件，且无法恢复。请谨慎操作。
+                </p>
+            </div>
+            <div class="modal-footer" style="justify-content:center; margin-top:14px;">
+                <button class="btn-secondary" onclick="closeModal('deleteKbModal')" style="padding:8px 16px; font-size:13px;">取消</button>
+                <button class="btn-danger" id="confirmDeleteKb" style="border-color:#FCA5A5; background:#FEF2F2; color:var(--color-error); padding:8px 16px; font-size:13px;">
+                    确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        function setupModalOverlay(modalId) {
+            var modal = document.getElementById(modalId);
+            if (!modal) return;
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) closeModal(modalId);
+            });
+        }
+
+        document.querySelectorAll('.kb-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.kb-item').forEach(function(el) { el.classList.remove('active'); });
+                this.classList.add('active');
+            });
+        });
+
+        setupModalOverlay('createKbModal');
+        setupModalOverlay('uploadModal');
+        setupModalOverlay('editKbModal');
+        setupModalOverlay('deleteKbModal');
+
+        var openCreateKb = document.getElementById('openCreateKbModal');
+        if (openCreateKb) openCreateKb.addEventListener('click', function() { openModal('createKbModal'); });
+        var openUploadBtn = document.getElementById('openUploadBtn');
+        if (openUploadBtn) openUploadBtn.addEventListener('click', function() { openModal('uploadModal'); });
+        var openEditBtn = document.getElementById('openEditKbModal');
+        if (openEditBtn) openEditBtn.addEventListener('click', function() { openModal('editKbModal'); });
+        var openDelBtn = document.getElementById('openDeleteKbModal');
+        if (openDelBtn) openDelBtn.addEventListener('click', function() { openModal('deleteKbModal'); });
+
+        function filterFileSections(filter) {
+            document.querySelectorAll('.file-card').forEach(function(card) {
+                if (filter === 'all') { card.style.display = ''; }
+                else {
+                    var type = card.querySelector('.file-type-icon').className.replace('file-type-icon ', '');
+                    card.style.display = (type === 'type-' + filter) ? '' : 'none';
+                }
+            });
+        }
+
+        document.querySelectorAll('.filter-chip').forEach(function(chip) {
+            chip.addEventListener('click', function() {
+                var filter = this.dataset.filter;
+                document.querySelectorAll('.filter-chip').forEach(function(c) { c.classList.remove('active'); });
+                this.classList.add('active');
+                document.querySelectorAll('.stat-card').forEach(function(card) {
+                    card.classList.toggle('active', card.dataset.filter === filter);
+                });
+                filterFileSections(filter);
+            });
+        });
+
+        document.querySelectorAll('.stat-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                var filter = this.dataset.filter;
+                document.querySelectorAll('.filter-chip').forEach(function(c) {
+                    c.classList.toggle('active', c.dataset.filter === filter);
+                });
+                document.querySelectorAll('.stat-card').forEach(function(c) {
+                    c.classList.toggle('active', c.dataset.filter === filter);
+                });
+                filterFileSections(filter);
+                if (filter !== 'all') {
+                    var el = document.querySelector('.file-scroll-area');
+                    if (el) el.scrollTop = 0;
+                }
+            });
+        });
+
+        document.querySelectorAll('.file-section-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var section = this.closest('.file-section');
+                var list = section.querySelector('.file-list');
+                var isHidden = list.style.display === 'none';
+                list.style.display = isHidden ? '' : 'none';
+                this.textContent = isHidden ? '收起 ▲' : '展开 ▼';
+            });
+        });
+
+        var searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                var keyword = this.value.toLowerCase().trim();
+                document.querySelectorAll('.file-card').forEach(function(card) {
+                    var name = card.querySelector('.file-name').textContent.toLowerCase();
+                    card.style.display = keyword === '' || name.includes(keyword) ? '' : 'none';
+                });
+            });
+        }
+
+        var kbSearchInput = document.getElementById('kbSearchInput');
+        if (kbSearchInput) {
+            kbSearchInput.addEventListener('input', function() {
+                var keyword = this.value.toLowerCase().trim();
+                document.querySelectorAll('.kb-item').forEach(function(item) {
+                    var name = (item.dataset.name || item.querySelector('.kb-name').textContent).toLowerCase();
+                    item.style.display = keyword === '' || name.includes(keyword) ? '' : 'none';
+                });
+            });
+        }
+
+        // ── 新建知识库：授权用户 ──
+        (function initCreateKb() {
+            var list = document.getElementById('createKbUserList');
+            var si = document.getElementById('createKbUserSearch');
+            var cnt = document.getElementById('createKbSelectedCount');
+            var pag = document.getElementById('createKbUserPagination');
+            if (!list || !si || !cnt || !pag) return;
+            var perPage = 5;
+            function upd() { cnt.textContent = '已选 ' + list.querySelectorAll('.grant-user-item.selected').length + ' 个用户'; }
+            list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                it.addEventListener('click', function() { it.classList.toggle('selected'); upd(); });
+            });
+            si.addEventListener('input', function() {
+                var kw = this.value.toLowerCase().trim();
+                list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                    it.style.display = kw === '' || it.dataset.username.toLowerCase().includes(kw) ? '' : 'none';
+                });
+            });
+            var all = list.querySelectorAll('.grant-user-item');
+            var totalPages = Math.ceil(all.length / perPage);
+            all.forEach(function(it, i) {
+                it.dataset.page = String(Math.floor(i / perPage) + 1);
+                if (i >= perPage) it.style.display = 'none';
+            });
+            pag.addEventListener('click', function(e) {
+                var btn = e.target.closest('.grant-pagination-btn[data-page]');
+                if (!btn) return;
+                var page = btn.dataset.page;
+                list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                    it.style.display = it.dataset.page === page ? '' : 'none';
+                });
+                pag.querySelectorAll('.grant-pagination-btn[data-page]').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                var fb = pag.querySelector('.grant-pagination-btn:first-child');
+                var lb = pag.querySelector('.grant-pagination-btn:last-child');
+                if (fb) fb.disabled = page === '1';
+                if (lb) lb.disabled = page === String(totalPages);
+            });
+        })();
+
+        var confirmCreateBtn = document.getElementById('confirmCreateKb');
+        if (confirmCreateBtn) {
+            confirmCreateBtn.addEventListener('click', function() {
+                var kbName = document.querySelector('#createKbModal input[type="text"]').value || '新建知识库';
+                var selectedUsers = [];
+                document.querySelectorAll('#createKbUserList .grant-user-item.selected').forEach(function(it) {
+                    selectedUsers.push({ userId: it.dataset.userId, username: it.dataset.username });
+                });
+                alert('知识库「' + kbName + '」已创建！');
+                closeModal('createKbModal');
+                document.querySelectorAll('#createKbUserList .grant-user-item.selected').forEach(function(it) { it.classList.remove('selected'); });
+                document.getElementById('createKbSelectedCount').textContent = '已选 0 个用户';
+            });
+        }
+
+        // ── 编辑知识库：授权用户 ──
+        (function initEditKb() {
+            var list = document.getElementById('editKbUserList');
+            var si = document.getElementById('editKbUserSearch');
+            var cnt = document.getElementById('editKbSelectedCount');
+            var pag = document.querySelector('#editKbModal .grant-pagination');
+            if (!list || !si || !cnt || !pag) return;
+            var perPage = 5;
+            function upd() { cnt.textContent = '已选 ' + list.querySelectorAll('.grant-user-item.selected').length + ' 个用户'; }
+            list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                it.addEventListener('click', function() {
+                    it.classList.toggle('selected');
+                    it.querySelector('.grant-user-avatar').style.background = it.classList.contains('selected') ? 'var(--color-amber-100)' : '';
+                    upd();
+                });
+            });
+            si.addEventListener('input', function() {
+                var kw = this.value.toLowerCase().trim();
+                list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                    it.style.display = kw === '' || it.dataset.username.toLowerCase().includes(kw) ? '' : 'none';
+                });
+            });
+            var all = list.querySelectorAll('.grant-user-item');
+            var totalPages = Math.ceil(all.length / perPage);
+            all.forEach(function(it, i) {
+                it.dataset.page = String(Math.floor(i / perPage) + 1);
+                if (i >= perPage) it.style.display = 'none';
+            });
+            pag.addEventListener('click', function(e) {
+                var btn = e.target.closest('.grant-pagination-btn[data-page]');
+                if (!btn) return;
+                var page = btn.dataset.page;
+                list.querySelectorAll('.grant-user-item').forEach(function(it) {
+                    it.style.display = it.dataset.page === page ? '' : 'none';
+                });
+                pag.querySelectorAll('.grant-pagination-btn[data-page]').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                var fb = pag.querySelector('.grant-pagination-btn:first-child');
+                var lb = pag.querySelector('.grant-pagination-btn:last-child');
+                if (fb) fb.disabled = page === '1';
+                if (lb) lb.disabled = page === String(totalPages);
+            });
+        })();
+
+        var confirmEditBtn = document.getElementById('confirmEditKb');
+        if (confirmEditBtn) {
+            confirmEditBtn.addEventListener('click', function() {
+                var newName = document.getElementById('editKbName').value;
+                var newDesc = document.getElementById('editKbDesc').value;
+                var selectedUsers = [];
+                document.querySelectorAll('#editKbUserList .grant-user-item.selected').forEach(function(it) {
+                    selectedUsers.push({ userId: it.dataset.userId, username: it.dataset.username });
+                });
+                alert('知识库「' + newName + '」已保存！');
+                closeModal('editKbModal');
+                var t = document.querySelector('.content-title');
+                var d = document.querySelector('.content-desc');
+                if (t) t.textContent = newName;
+                if (d) d.textContent = newDesc;
+            });
+        }
+
+        var confirmDelBtn = document.getElementById('confirmDeleteKb');
+        if (confirmDelBtn) {
+            confirmDelBtn.addEventListener('click', function() {
+                alert('知识库已删除！');
+                closeModal('deleteKbModal');
+            });
+        }
+    </script>
+</body>
+</html>

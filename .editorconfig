@@ -1,0 +1,29 @@
+# EditorConfig: https://editorconfig.org
+# 统一团队编辑器缩进/换行规范
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Python 后端：4 空格缩进
+[*.py]
+indent_size = 4
+
+# YAML 配置：2 空格
+[*.{yml,yaml}]
+indent_size = 2
+
+# Markdown：保留末尾空格（两空格换行）
+[*.md]
+trim_trailing_whitespace = false
+max_line_length = off
+
+# Makefile 必须用 Tab
+[Makefile]
+indent_style = tab

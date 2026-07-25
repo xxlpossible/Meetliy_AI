@@ -1,0 +1,64 @@
+# ============================================================
+# 根级统一 .gitignore（合并自 backend/ 与 frontend/ 子级配置并修正）
+# ============================================================
+
+# ===== Python (backend) =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+backend/.venv/
+backend/venv/
+backend/env/
+# 依赖锁文件必须纳入版本控制（修正 backend 原 *.lock 误忽略 uv.lock）
+!backend/uv.lock
+
+# ===== 运行时数据（backend）=====
+backend/data/
+# ChromaDB 向量库运行时数据（含 test 目录下测试生成的实例）
+**/chroma_db/
+backend/sql/
+backend/checkpoints.db
+backend/*.db
+backend/*.sqlite3
+
+# ===== Node.js (frontend) =====
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+*.tsbuildinfo
+
+# ===== 环境变量与密钥 =====
+.env
+.env.local
+.env.*.local
+# 注意：frontend/.env.development 与 .env.production 保留纳入版本控制（前端配置无敏感信息）
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ===== WorkBuddy / 工具元数据 =====
+.workbuddy/
+.agents/
+
+# ===== 系统 / 临时 =====
+.DS_Store
+Thumbs.db
+nul
+*.bak
+*.log
+*.tmp
