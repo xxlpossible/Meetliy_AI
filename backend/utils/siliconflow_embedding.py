@@ -1,9 +1,13 @@
 import requests
 import chromadb
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
 from settings import settings
+
+# 默认持久化路径：backend/chroma_db/（与本文件所在 utils/ 目录同级）
+_DEFAULT_PERSIST_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
 
 
 # 硅基流动嵌入模型工具类
@@ -45,14 +49,18 @@ class ChromaDBManager:
     def __init__(
             self,
             embedding_tool: SiliconFlowEmbeddingTool = SiliconFlowEmbeddingTool(),
-            persist_path: str = "./chroma_db"
+            persist_path: Optional[str] = None,
     ):
         """
         初始化 ChromaDB
         :param embedding_tool: 上面定义的硅基流动工具类实例
-        :param persist_path: 数据库持久化存储路径
+        :param persist_path: 数据库持久化存储路径，默认 backend/chroma_db/
         """
+        if persist_path is None:
+            persist_path = str(_DEFAULT_PERSIST_DIR)
         self.embedding_tool = embedding_tool
+        # 确保持久化目录存在
+        Path(persist_path).mkdir(parents=True, exist_ok=True)
         # 初始化持久化客户端（数据会存到硬盘）
         self.client = chromadb.PersistentClient(path=persist_path)
 
