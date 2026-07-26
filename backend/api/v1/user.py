@@ -1,5 +1,5 @@
-from typing import Optional
-from fastapi import APIRouter, Request, Depends, Query
+
+from fastapi import APIRouter, Depends, Query
 
 from api.schemas import resp_200
 from database.models.user import User, UserDao
@@ -12,7 +12,7 @@ router = APIRouter(prefix='/user', tags=['user'])
 async def get_user_list(
     page_num: int = Query(default=1, ge=1, description="页码"),
     page_size: int = Query(default=10, ge=1, le=100, description="每页数量"),
-    username: Optional[str] = Query(default=None, description="按用户名模糊搜索"),
+    username: str | None = Query(default=None, description="按用户名模糊搜索"),
     current_user: User = Depends(get_current_user)
 ):
     """

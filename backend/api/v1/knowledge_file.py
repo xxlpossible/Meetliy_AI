@@ -1,17 +1,18 @@
 import os
 import uuid
-from loguru import logger
+
 import aiofiles
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form, Depends
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from loguru import logger
 
 from api.schemas import resp_200
 from database.models.knowledge import Knowledge, KnowledgeDao
-from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, FileState
+from database.models.knowledge_file import FileState, KnowledgeFile, KnowledgeFileDao
 from database.models.user import User
-from utils.dependencies import get_current_user
-from utils.siliconflow_embedding import db_manager
-from utils.markitdown_converter import get_supported_extensions, get_knowledge_type
 from task.tasks import parse_knowledge_file
+from utils.dependencies import get_current_user
+from utils.markitdown_converter import get_knowledge_type, get_supported_extensions
+from utils.siliconflow_embedding import db_manager
 
 router = APIRouter(prefix='/knowledge', tags=['knowledge'])
 
@@ -53,8 +54,8 @@ def _ensure_knowledge(knowledge_id: str, user: User) -> str:
             collection_name = f"collection_kb_{knowledge_id}"
             db_manager.get_or_create_collection(name=collection_name)
             logger.info(f"知识库向量集合创建成功，集合名称：{collection_name}")
-        except Exception as e:
-            logger.error(f"知识库向量集合创建失败", exc_info=True)
+        except Exception:
+            logger.error("知识库向量集合创建失败", exc_info=True)
         return knowledge_id
     # 存在但无权
     raise HTTPException(status_code=403, detail="无权访问该知识库")
@@ -189,7 +190,7 @@ async def get_file_state(
 
 @router.get("/file_list")
 async def get_file_list(
-    knowledge_id: str = None,
+    knowledge_id: str | None = None,
     page_num: int = 10,
     page_size: int = 1,
     current_user: User = Depends(get_current_user),

@@ -1,14 +1,22 @@
 from datetime import datetime
 from enum import IntEnum
-from typing import Optional, Dict, Any, List
+from typing import Any
 
-from sqlalchemy import Column, DateTime, String, text, Text, JSON, desc, cast
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    String,
+    and_,
+    cast,
+    desc,
+    text,
+)
+from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel, select
 
 from database.base import session_getter
 from database.schemas.schema import TranscriptionQueryVo
-from sqlalchemy import select, and_
-from sqlalchemy.sql import func
 
 
 class Status(IntEnum):
@@ -23,32 +31,32 @@ class Delete(IntEnum):
 
 
 class TranscriptionBase(SQLModel):
-    task_name: Optional[str] = Field(default=None)
+    task_name: str | None = Field(default=None)
     # 有权访问该会议转录结果的用户ID列表（会议可多人参与，后续可放权）
     # 存为 JSON 数组，查询时用 JSON_CONTAINS 在 SQL 层过滤，保证分页正确
-    user_ids: Optional[List[int]] = Field(
+    user_ids: list[int] | None = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False, comment="有权访问的用户ID列表")
     )
-    status: Optional[int] = Field(default=Status.PENDING.value)
-    task_result: Optional[Dict[str, Any]] = Field(
+    status: int | None = Field(default=Status.PENDING.value)
+    task_result: dict[str, Any] | None = Field(
         default_factory=dict,
         sa_column=Column(JSON, nullable=False)
     )
-    is_delete: Optional[int] = Field(default=Delete.NOT.value)
-    realtime_asr_text: Optional[List[str]] = Field(
+    is_delete: int | None = Field(default=Delete.NOT.value)
+    realtime_asr_text: list[str] | None = Field(
         default=None,
         sa_column=Column(JSON, nullable=True, comment="实时转录文本行列表")
     )
-    note: Optional[str] = Field(default=None)
+    note: str | None = Field(default=None)
     # 会议合并后音频文件的 OSS 公网下载地址（mp3 已上传至 OSS，本地不保留）
-    file_url: Optional[str] = Field(
+    file_url: str | None = Field(
         default=None,
         sa_column=Column(String(1024), nullable=True, comment="OSS合并音频公网URL")
     )
-    create_time: Optional[datetime] = Field(sa_column=Column(
+    create_time: datetime | None = Field(sa_column=Column(
         DateTime, nullable=False, index=True, server_default=text('CURRENT_TIMESTAMP')))
-    update_time: Optional[datetime] = Field(
+    update_time: datetime | None = Field(
         sa_column=Column(DateTime,
                          nullable=False,
                          server_default=text('CURRENT_TIMESTAMP'),
@@ -77,7 +85,7 @@ class TranscriptionDao:
             return transcription
 
     @classmethod
-    def delete(cls, task_id: str, user_id: int = None):
+    def delete(cls, task_id: str, user_id: int | None = None):
         """删除转录记录。传入 user_id 时校验该用户是否有权操作。"""
         transcription = cls.get_by_id(t_id=task_id, user_id=user_id)
         if not transcription:
@@ -88,7 +96,7 @@ class TranscriptionDao:
             session.commit()
 
     @classmethod
-    def get_by_id(cls, t_id: str, user_id: int = None) -> Optional[Transcription]:
+    def get_by_id(cls, t_id: str, user_id: int | None = None) -> Transcription | None:
         """
         按主键查询转录记录。
         传入 user_id 时，仅当该用户在 user_ids 中才返回记录（越权防护）；
@@ -100,10 +108,10 @@ class TranscriptionDao:
                 statement = statement.where(
                     func.json_contains(Transcription.user_ids, cast(user_id, JSON))
                 )
-            return session.exec(statement).scalars().first()
+            return session.exec(statement).first()
 
     @classmethod
-    def list(cls, body: TranscriptionQueryVo, user_id: int = None):
+    def list(cls, body: TranscriptionQueryVo, user_id: int | None = None):
         """
         分页查询转录列表。
         传入 user_id 时，仅返回该用户有权访问（user_ids 包含该用户）的记录。
@@ -134,13 +142,13 @@ class TranscriptionDao:
             statement = statement.offset(offset).limit(body.page_size)
 
             # 执行查询
-            results = session.exec(statement).scalars().all()
+            results = session.exec(statement).all()
 
             # 查询总记录数（用于分页信息）
             count_statement = select(func.count(Transcription.id))
             if conditions:
                 count_statement = count_statement.where(and_(*conditions))
-            total_count = session.exec(count_statement).scalars().one()
+            total_count = session.exec(count_statement).one()
 
             return results, total_count
 

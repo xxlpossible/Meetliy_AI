@@ -1,24 +1,34 @@
+import asyncio
 import json
 import re
-from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import StreamingResponse
+from loguru import logger
+
 from api.schemas import resp_200
-from database.models.chatmessage import ChatMessageDao, ChatMessage
 from database.models.chat_session import ChatSession, ChatSessionDao
+from database.models.chatmessage import ChatMessageDao
 from database.models.user import User
 from database.schemas.schema import (
-    UserQA, ChatMessageQuery, ChatMessageAdd,
-    ChatMessageUpdate, UserTempQA, ChatSSERequest
+    ChatMessageAdd,
+    ChatMessageQuery,
+    ChatMessageUpdate,
+    ChatSSERequest,
+    UserQA,
+    UserTempQA,
 )
-from service.llm_service import llm_service
 from service.llm_graph_service import stream_chat_answer, stream_chat_messages
-from fastapi.responses import StreamingResponse
-from fastapi import WebSocket, WebSocketDisconnect, Query
-from loguru import logger
+from service.llm_service import llm_service
 from utils.dependencies import get_current_user
 from utils.security import TOKEN_TYPE_ACCESS, decode_token
-import asyncio
 
 router = APIRouter(prefix='/chat', tags=['chat'])
 
@@ -63,8 +73,8 @@ async def user_qa(body: UserQA, current_user: User = Depends(get_current_user)):
     async def stream_response():
         """生成流式响应"""
         try:
-            from utils.siliconflow_embedding import db_manager
             from service.rerank import rerank
+            from utils.siliconflow_embedding import db_manager
             search_result = db_manager.search(
                 collection_name=collection_name,
                 query_text=question,
@@ -94,10 +104,10 @@ async def user_qa(body: UserQA, current_user: User = Depends(get_current_user)):
 async def chat_stream(
     websocket: WebSocket,
     session_id: str,
-    task_ids: Optional[str] = Query(None),
-    need_kb: Optional[bool] = Query(False),
-    knowledge_ids: Optional[str] = Query(None),
-    token: Optional[str] = Query(None)
+    task_ids: str | None = Query(None),
+    need_kb: bool | None = Query(False),
+    knowledge_ids: str | None = Query(None),
+    token: str | None = Query(None)
 ):
     """
     WebSocket 聊天接口。
@@ -150,7 +160,7 @@ async def chat_stream(
                     websocket.receive_json(),
                     timeout=300
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.info(f"⏰ WebSocket 连接超时（{300} 秒无消息），自动关闭")
                 await websocket.close(code=4000)
                 break
@@ -196,7 +206,7 @@ async def chat_stream(
 
     except WebSocketDisconnect:
         logger.info("❎ WebSocket 客户端主动断开连接")
-    except Exception as e:
+    except Exception:
         logger.error("❌ WebSocket 异常", exc_info=True)
     finally:
         await websocket.close()
@@ -314,7 +324,7 @@ async def insert_chat_message(chat_message: ChatMessageAdd, current_user: User =
     
     # 写入 MySQL + Chroma（通过 context_builder 统一处理）
     persist_chat_message(
-        session_id=chat_message.session_id,
+        session_id=chat_message.session_id,  # pyright: ignore[reportArgumentType]
         user_id=current_user.id,
         role=chat_message.role,
         content=chat_message.content,

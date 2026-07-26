@@ -8,27 +8,28 @@ LangGraph 对话工作流
 - 流式生成回答
 - 存储聊天记录
 """
-from typing import List, Dict, Tuple
 
-from langchain_core.messages import AIMessageChunk, HumanMessage
-
-from langchain.chat_models import init_chat_model
-from typing_extensions import TypedDict, Annotated
 import operator
-from loguru import logger
-from langgraph.graph import StateGraph, START, END
+from typing import Annotated
+
 from fastapi import WebSocket
-from settings import settings
-from utils.siliconflow_embedding import db_manager
-from service.rerank import rerank
+from langchain.chat_models import init_chat_model
+from langchain_core.messages import AIMessageChunk, HumanMessage
+from langgraph.graph import END, START, StateGraph
+from loguru import logger
+from typing_extensions import TypedDict
+
 from service.context_builder import (
     append_history,
+    build_context,
     get_next_turn_index,
     get_recent_history,
     persist_chat_message,
     retrieve_past_memory,
-    build_context,
 )
+from service.rerank import rerank
+from settings import settings
+from utils.siliconflow_embedding import db_manager
 
 
 # State 定义 - 移除了 summary 字段
@@ -193,7 +194,7 @@ chat_agent = ChatAgent()
 
 async def _search_and_rerank_meeting(
     question: str,
-    task_ids: List[str],
+    task_ids: list[str],
     top_k: int = 5
 ) -> str:
     """
@@ -239,7 +240,7 @@ async def _search_and_rerank_meeting(
 
 async def _search_and_rerank_knowledge_base(
     question: str,
-    knowledge_ids: List[str],
+    knowledge_ids: list[str],
     top_k: int = 5
 ) -> str:
     """
@@ -298,9 +299,9 @@ async def stream_chat_messages(
     question: str,
     session_id: str,
     user_id: int = 0,
-    task_ids: List[str] = None,
+    task_ids: list[str] | None = None,
     need_kb: bool = False,
-    knowledge_ids: List[str] = None
+    knowledge_ids: list[str] | None = None
 ):
     """
     产出消息协议（与 WebSocket / SSE 共用）：
@@ -352,7 +353,7 @@ async def stream_chat_messages(
     yield {"status": "start", "question": question}
 
     # === 4. LangGraph 流式生成回答 ===
-    full_answer_parts: List[str] = []
+    full_answer_parts: list[str] = []
     try:
         async for chunk in chat_agent.stream_run(
             question, meeting_text, kb_text, session_id=session_id, user_id=user_id, turn_index=user_turn_index
@@ -391,9 +392,9 @@ async def stream_chat_answer(
     question: str,
     session_id: str,
     user_id: int = 0,
-    task_ids: List[str] = None,
+    task_ids: list[str] | None = None,
     need_kb: bool = False,
-    knowledge_ids: List[str] = None
+    knowledge_ids: list[str] | None = None
 ):
     """
     WebSocket 对话业务编排 — 薄适配层。

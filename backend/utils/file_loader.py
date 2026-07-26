@@ -14,12 +14,15 @@
 """
 
 import os
-from typing import List, Optional
 
 from langchain_core.documents import Document
 from loguru import logger
 
-from utils.markitdown_converter import convert_to_markdown, is_supported, get_knowledge_type
+from utils.markitdown_converter import (
+    convert_to_markdown,
+    get_knowledge_type,
+    is_supported,
+)
 
 
 class FileLoader:
@@ -34,8 +37,8 @@ class FileLoader:
     def load_document(
         self,
         file_path: str,
-        file_type: Optional[str] = None
-    ) -> List[Document]:
+        file_type: str | None = None
+    ) -> list[Document]:
         """
         加载文档并转换为 Markdown 形式的 LangChain Document 列表。
 

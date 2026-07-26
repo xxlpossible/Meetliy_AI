@@ -1,5 +1,6 @@
 # task/celery_app.py
 from celery import Celery
+
 from settings import settings
 
 # 创建 Celery 应用实例

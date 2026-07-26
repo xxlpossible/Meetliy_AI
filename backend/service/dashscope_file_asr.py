@@ -1,11 +1,10 @@
 from http import HTTPStatus
-from dashscope.audio.asr import Transcription
+
 import dashscope
-import json
-from typing import List, Optional, Dict
-from settings import settings
+from dashscope.audio.asr import Transcription
 from loguru import logger
-from utils.uploader import TmpFilesUploader
+
+from settings import settings
 
 
 class DashScopeASRService:
@@ -26,12 +25,12 @@ class DashScopeASRService:
 
     def transcribe(
         self,
-        file_urls: List[str],
-        language_hints: Optional[List[str]] = None,
+        file_urls: list[str],
+        language_hints: list[str] | None = None,
         diarization_enabled: bool = True,
         timestamp_alignment_enabled: bool = False,
         model: str = "paraformer-v2",
-    ) -> Dict:
+    ) -> dict:
         """
         调用 DashScope 异步语音识别 API，返回识别结果字典
 

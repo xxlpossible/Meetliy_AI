@@ -1,12 +1,13 @@
-from langchain.tools import tool
+import operator
+from typing import Annotated, Literal
+
 from langchain.chat_models import init_chat_model
 from langchain.messages import AnyMessage, ToolMessage
+from langchain.tools import tool
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from typing_extensions import TypedDict, Annotated
-from typing import Literal, List
-import operator
+from langgraph.graph import END, START, StateGraph
 from loguru import logger
-from langgraph.graph import StateGraph, START, END
+from typing_extensions import TypedDict
 
 from service.dashscope_file_asr import DashScopeASRService
 from settings import settings
@@ -212,7 +213,7 @@ class MeetingAgent:
     # =========================
     def _should_continue(
         self, state: MessagesState
-    ) -> Literal["tool_node", List[str]]:
+    ) -> Literal["tool_node", list[str]]:
 
         last_message = state["messages"][-1]
 

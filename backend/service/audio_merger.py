@@ -14,7 +14,6 @@ import os
 import struct
 import subprocess
 import uuid
-from typing import List
 
 from loguru import logger
 
@@ -62,7 +61,7 @@ def _pcm_to_wav(pcm_path: str, wav_path: str):
                 wav.write(chunk)
 
 
-def merge(participants_info: List[dict]) -> str:
+def merge(participants_info: list[dict]) -> str:
     """
     合并多路 PCM 录音为单个 MP3。
 

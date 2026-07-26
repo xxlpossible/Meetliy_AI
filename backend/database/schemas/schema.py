@@ -1,69 +1,68 @@
-from typing import Optional, List
-
 import re
+
 from pydantic import field_validator
 from sqlmodel import Field, SQLModel
 
 
 class TranscriptionQueryVo(SQLModel):
-    task_name: Optional[str] = Field(default=None)
+    task_name: str | None = Field(default=None)
     page_num: int = Field(default=1, description='页数')
     page_size: int = Field(default=10, description='页大小')
 
 
 class UserQA(SQLModel):
-    task_id: Optional[str] = Field(default=None)
-    question: Optional[str] = Field(default=None)
-    history: Optional[List[str]] = Field(default=None)
+    task_id: str | None = Field(default=None)
+    question: str | None = Field(default=None)
+    history: list[str] | None = Field(default=None)
 
 
 class UserTempQA(SQLModel):
-    text: Optional[str] = Field(default=None)
-    question: Optional[str] = Field(default=None)
-    history: Optional[List[str]] = Field(default=None)
+    text: str | None = Field(default=None)
+    question: str | None = Field(default=None)
+    history: list[str] | None = Field(default=None)
 
 
 class ChatMessageQuery(SQLModel):
     """聊天记录列表查询请求体"""
-    session_id: Optional[str] = Field(default=None, description="会话ID")
-    page_size: Optional[int] = Field(default=10, description="每页数量")
-    page_num: Optional[int] = Field(default=1, description="页码")
+    session_id: str | None = Field(default=None, description="会话ID")
+    page_size: int | None = Field(default=10, description="每页数量")
+    page_num: int | None = Field(default=1, description="页码")
 
 
 class ChatMessageAdd(SQLModel):
     """添加聊天记录请求体 - 单条消息"""
-    session_id: Optional[str] = Field(default=None, description="会话ID")
-    role: Optional[str] = Field(default=None, description="消息角色: user / assistant")
-    content: Optional[str] = Field(default=None, description="消息内容")
-    turn_index: Optional[int] = Field(default=0, description="会话内轮次序号")
-    user_id: Optional[int] = Field(default=None)
+    session_id: str | None = Field(default=None, description="会话ID")
+    role: str | None = Field(default=None, description="消息角色: user / assistant")
+    content: str | None = Field(default=None, description="消息内容")
+    turn_index: int | None = Field(default=0, description="会话内轮次序号")
+    user_id: int | None = Field(default=None)
 
 
 class ChatSSERequest(SQLModel):
     """SSE 流式聊天请求体"""
     question: str = Field(..., description="用户问题")
     session_id: str = Field(..., description="会话ID")
-    task_ids: Optional[List[str]] = Field(default=None, description="会议任务ID列表")
-    need_kb: Optional[bool] = Field(default=False, description="是否查询知识库")
-    knowledge_ids: Optional[List[str]] = Field(default=None, description="知识库ID列表")
+    task_ids: list[str] | None = Field(default=None, description="会议任务ID列表")
+    need_kb: bool | None = Field(default=False, description="是否查询知识库")
+    knowledge_ids: list[str] | None = Field(default=None, description="知识库ID列表")
 
 
 class ChatMessageUpdate(SQLModel):
     """更新聊天记录请求体"""
-    content: Optional[str] = Field(default=None, description="消息内容")
-    chat_id: Optional[int] = Field(default=None, description="聊天记录ID")
+    content: str | None = Field(default=None, description="消息内容")
+    chat_id: int | None = Field(default=None, description="聊天记录ID")
 
 
 class TransUpdate(SQLModel):
-    task_name: Optional[str] = None
-    task_id: Optional[str] = None
-    note: Optional[str] = None
+    task_name: str | None = None
+    task_id: str | None = None
+    note: str | None = None
 
 
 # 登录注册时接收的字段
 class UserLogin(SQLModel):
-    username: Optional[str] = Field(default=None, description="用户名")
-    password: Optional[str] = Field(default=None, description="密码")
+    username: str | None = Field(default=None, description="用户名")
+    password: str | None = Field(default=None, description="密码")
 
     @field_validator("username", "password")
     @classmethod
@@ -74,9 +73,9 @@ class UserLogin(SQLModel):
 
 
 class UserRegister(SQLModel):
-    username: Optional[str] = Field(default=None, description="用户名")
-    password: Optional[str] = Field(default=None, description="密码")
-    confirmPassword: Optional[str] = Field(default=None, description="确认密码")
+    username: str | None = Field(default=None, description="用户名")
+    password: str | None = Field(default=None, description="密码")
+    confirmPassword: str | None = Field(default=None, description="确认密码")
 
     @field_validator("username")
     @classmethod
@@ -120,23 +119,23 @@ class RefreshTokenRequest(SQLModel):
 class KnowledgeCreate(SQLModel):
     """创建知识库请求体"""
     name: str = Field(min_length=1, max_length=128, description="知识库名称")
-    description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
-    accept_users: Optional[List[int]] = Field(default=None, description="有权限访问该知识库的用户ID列表，默认只有创建者有权限")
+    description: str | None = Field(default=None, max_length=500, description="知识库描述")
+    accept_users: list[int] | None = Field(default=None, description="有权限访问该知识库的用户ID列表，默认只有创建者有权限")
 
 
 class KnowledgeUpdate(SQLModel):
     """更新知识库请求体"""
     knowledge_id: str = Field(..., description="知识库ID")
-    name: Optional[str] = Field(default=None, min_length=1, max_length=128, description="知识库名称")
-    description: Optional[str] = Field(default=None, max_length=500, description="知识库描述")
-    accept_users: Optional[List[int]] = Field(default=None, description="有权限访问该知识库的用户ID列表（全量替换，创建者不存入）")
+    name: str | None = Field(default=None, min_length=1, max_length=128, description="知识库名称")
+    description: str | None = Field(default=None, max_length=500, description="知识库描述")
+    accept_users: list[int] | None = Field(default=None, description="有权限访问该知识库的用户ID列表（全量替换，创建者不存入）")
 
 
 class KnowledgeQuery(SQLModel):
     """知识库列表查询请求体"""
     page_num: int = Field(default=1, ge=1, description="页码")
     page_size: int = Field(default=10, ge=1, le=100, description="每页数量")
-    name: Optional[str] = Field(default=None, description="按名称模糊搜索（可选）")
+    name: str | None = Field(default=None, description="按名称模糊搜索（可选）")
 
 
 class KnowledgeDelete(SQLModel):

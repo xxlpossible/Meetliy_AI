@@ -1,7 +1,8 @@
-import requests
-import chromadb
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import chromadb
+import requests
 from loguru import logger
 
 from settings import settings
@@ -20,7 +21,7 @@ class SiliconFlowEmbeddingTool:
         self.model_name = embeddings.get('model', "BAAI/bge-large-zh-v1.5")
         self.url = embeddings.get('base_url', "https://api.siliconflow.cn/v1/embeddings")
 
-    def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+    def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """调用 API 将一组文本转换为向量"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -49,7 +50,7 @@ class ChromaDBManager:
     def __init__(
             self,
             embedding_tool: SiliconFlowEmbeddingTool = SiliconFlowEmbeddingTool(),
-            persist_path: Optional[str] = None,
+            persist_path: str | None = None,
     ):
         """
         初始化 ChromaDB
@@ -84,9 +85,9 @@ class ChromaDBManager:
     def add_documents(
             self,
             collection_name: str,
-            documents: List[str],
-            metadatas: Optional[List[Dict]] = None,
-            ids: Optional[List[str]] = None
+            documents: list[str],
+            metadatas: list[dict] | None = None,
+            ids: list[str] | None = None
     ):
         """
         存储文档及其向量
@@ -115,8 +116,8 @@ class ChromaDBManager:
         collection_name: str,
         query_text: str,
         n_results: int = 5,
-        where: Optional[Dict] = None
-    ) -> Dict[str, Any]:
+        where: dict | None = None
+    ) -> dict[str, Any]:
         """
         向量查询
         

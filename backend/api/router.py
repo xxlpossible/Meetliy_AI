@@ -1,11 +1,14 @@
 from fastapi import APIRouter
-from api.v1 import user_router
-from api.v1 import chat_router
-from api.v1 import auth_router
-from api.v1 import knowledge_router
-from api.v1 import kb_router
-from api.v1 import meeting_router
-from api.v1 import session_router
+
+from api.v1 import (
+    auth_router,
+    chat_router,
+    kb_router,
+    knowledge_router,
+    meeting_router,
+    session_router,
+    user_router,
+)
 
 router = APIRouter(prefix='/api/v1', )
 router.include_router(user_router)

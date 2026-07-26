@@ -3,33 +3,48 @@
 
 路由前缀 /api/v1/meeting（router.py 的 /api/v1 + 本文件 /meeting）。
 """
-from typing import Optional, List
-from settings import settings
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
-from pydantic import BaseModel
 import asyncio
 import base64
 import json
 import os
-import time
-from service.meeting_callback import MeetingCallback
-from dashscope.audio.qwen_omni.omni_realtime import TranscriptionParams
-from fastapi import WebSocket, WebSocketDisconnect
-from utils.security import TOKEN_TYPE_ACCESS, decode_token
-import aiofiles
-from loguru import logger
 import tempfile
+import time
 import uuid
+
+import aiofiles
+from dashscope.audio.qwen_omni import MultiModality, OmniRealtimeConversation
+from dashscope.audio.qwen_omni.omni_realtime import TranscriptionParams
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from loguru import logger
+from pydantic import BaseModel
+
 from api.schemas import resp_200
-from database.models.meeting import Meeting, MeetingDao, MeetingStatus, MeetingDelete
-from database.models.transcription import Transcription, TranscriptionDao, Status, Delete
+from database.models.meeting import Meeting, MeetingDao, MeetingDelete, MeetingStatus
+from database.models.transcription import (
+    Delete,
+    Status,
+    Transcription,
+    TranscriptionDao,
+)
 from database.models.user import User, UserDao
-from service.meeting_manager import meeting_manager
 from service import audio_merger
+from service.meeting_callback import MeetingCallback
+from service.meeting_manager import meeting_manager
+from settings import settings
 from task.tasks import transcription
 from utils.dependencies import get_current_user
+from utils.security import TOKEN_TYPE_ACCESS, decode_token
 from utils.uploader import TmpFilesUploader
-from dashscope.audio.qwen_omni import OmniRealtimeConversation, MultiModality
 
 router = APIRouter(prefix="/meeting", tags=["会议"])
 
@@ -37,18 +52,18 @@ router = APIRouter(prefix="/meeting", tags=["会议"])
 # ----------------------------- 请求体 ----------------------------- #
 
 class CreateMeetingRequest(BaseModel):
-    meeting_name: Optional[str] = None
-    need_summary: Optional[bool] = True  # 会议结束后是否需要生成纪要，默认需要
+    meeting_name: str | None = None
+    need_summary: bool | None = True  # 会议结束后是否需要生成纪要，默认需要
 
 
 class MeetingListRequest(BaseModel):
     page_num: int = 1
     page_size: int = 10
-    meeting_name: Optional[str] = None
+    meeting_name: str | None = None
 
 
 class MeetingStatusRequest(BaseModel):
-    meeting_ids: List[str]
+    meeting_ids: list[str]
 
 
 # ----------------------------- 接口 ----------------------------- #
@@ -193,7 +208,7 @@ async def get_meeting_status(
 @router.get("/{meeting_id}/result", summary="查询会议解析结果")
 async def get_meeting_result(
         meeting_id: str,
-        task_id: Optional[str] = Query(None),
+        task_id: str | None = Query(None),
         current_user: User = Depends(get_current_user),
 ):
     """
@@ -318,7 +333,7 @@ async def delete_meeting(
 @router.post('/start_task', description="上传语音文件")
 async def upload_file(
         audio_file: UploadFile = File(...),
-        task_name: Optional[str] = Form(None),
+        task_name: str | None = Form(None),
         current_user: User = Depends(get_current_user)
 ):
     # 获取原始文件扩展名（如 .mp3 / .wav）
@@ -391,8 +406,8 @@ async def upload_file(
 @router.websocket("/ws/realtime")
 async def websocket_endpoint(
         websocket: WebSocket,
-        token: Optional[str] = Query(None),
-        meeting_id: Optional[str] = Query(None),
+        token: str | None = Query(None),
+        meeting_id: str | None = Query(None),
 ):
     """
     实时语音转写 WebSocket（会议模式）。
@@ -555,7 +570,7 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
         logger.error(f"[Meeting] WS 异常: meeting={meeting_id} user={username}, {e!r}")
     finally:
         # 6. 清理：移除参会者、关 PCM、关 DashScope、广播离开
-        conn, is_last = meeting_manager.remove_participant(meeting_id, user_id)
+        _conn, is_last = meeting_manager.remove_participant(meeting_id, user_id)
         if is_last:
             # 最后一人离开：自动结束会议（合并录音 → OSS 上传 → 触发转录任务）
             logger.info(f"[Meeting] 最后一名参会者离开，自动结束会议: meeting={meeting_id}")
@@ -618,9 +633,9 @@ async def _execute_end_meeting(
         meeting_id: str,
         participants_info: list,
         meeting: Meeting,
-        realtime_lines: Optional[list] = None,
-        task_id: Optional[str] = None,
-) -> Optional[str]:
+        realtime_lines: list | None = None,
+        task_id: str | None = None,
+) -> str | None:
     """
     结束会议的核心逻辑：合并音频、OSS上传、创建Transcription、触发Celery、更新DB。
     供房主主动结束（end_meeting）和最后一人自动结束（auto_end）复用。

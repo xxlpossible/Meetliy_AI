@@ -1,32 +1,31 @@
-from typing import Optional, List, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.sql import func
-from sqlmodel import SQLModel, Field
+from sqlmodel import Field, SQLModel
 
 from database.base import session_getter
-from utils.security import hash_password, verify_password
+from utils.security import hash_password
 
 
 class UserBase(SQLModel):
-    username: Optional[str] = Field(default=None)
-    phone_number: Optional[str] = Field(default=None)
+    username: str | None = Field(default=None)
+    phone_number: str | None = Field(default=None)
     hashed_password: str = Field(nullable=False)  # 加密后的密码
 
 
 class User(UserBase, table=True):
-    id: Optional[int] = Field(primary_key=True, nullable=False, index=True)
+    id: int | None = Field(primary_key=True, nullable=False, index=True)
 
 
 class UserDao:
     @classmethod
-    def get_by_username(cls, username: str) -> Optional[User]:
+    def get_by_username(cls, username: str) -> User | None:
         with session_getter() as session:
             statement = select(User).where(User.username == username)
             return session.scalars(statement).first()
 
     @classmethod
-    def get_by_id(cls, user_id: int) -> Optional[User]:
+    def get_by_id(cls, user_id: int) -> User | None:
         with session_getter() as session:
             return session.get(User, user_id)
 
@@ -35,8 +34,8 @@ class UserDao:
         cls,
         page_num: int = 1,
         page_size: int = 10,
-        username: Optional[str] = None,
-    ) -> Tuple[List[User], int]:
+        username: str | None = None,
+    ) -> tuple[list[User], int]:
         """
         分页获取用户列表。
         
@@ -69,7 +68,7 @@ class UserDao:
             return res, total_count
 
     @classmethod
-    def add(cls, username: str, password: str, phone_number: Optional[str] = None) -> User:
+    def add(cls, username: str, password: str, phone_number: str | None = None) -> User:
         hashed = hash_password(password)
         user = User(username=username, hashed_password=hashed, phone_number=phone_number)
         with session_getter() as session:

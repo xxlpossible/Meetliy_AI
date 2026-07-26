@@ -1,4 +1,4 @@
-from typing import Union, Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -13,7 +13,7 @@ class UnifiedResponseModel(BaseModel, Generic[DataT]):
     data: DataT = None
 
 
-def resp_200(data: Union[list, dict, str, Any] = None,
+def resp_200(data: list | dict | str | Any = None,
              message: str = 'SUCCESS') -> UnifiedResponseModel:
     """成功的代码"""
     return UnifiedResponseModel(status_code=200, status_message=message, data=data)

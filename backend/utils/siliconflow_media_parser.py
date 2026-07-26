@@ -18,14 +18,13 @@ API Key 复用 settings.get_embeddings_config()['api_key']（硅基流动同一�
 import base64
 import mimetypes
 import os
-from typing import Optional
 
 from loguru import logger
 
 from settings import settings
 
 
-def _get_api_key() -> Optional[str]:
+def _get_api_key() -> str | None:
     """获取硅基流动 API Key（复用 embeddings 配置，同一账号）。"""
     config = settings.get_embeddings_config()
     return config.get("api_key")

@@ -1,10 +1,7 @@
 import os
-from typing import Optional, Union, Dict
 
 import yaml
 from dotenv import load_dotenv
-
-
 from loguru import logger
 from pydantic_settings import BaseSettings
 
@@ -14,7 +11,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 # 各 section 的环境变量前缀与已知字段。
 # known_fields 用于纯 .env 模式（数据库无配置）：即使 section_dict 为空，
 # 也能按已知字段从环境变量发现配置。
-_SECTION_META: Dict[str, tuple] = {
+_SECTION_META: dict[str, tuple] = {
     'openai_config':      ('OPENAI',       ['base_url', 'api_key', 'model']),
     'transcription':      ('TRANSCRIPTION', ['base_url', 'api_key', 'model']),
     'hugging_face_config': ('HUGGINGFACE', ['token']),
@@ -27,9 +24,9 @@ _SECTION_META: Dict[str, tuple] = {
 
 
 class Settings(BaseSettings):
-    database_url: Optional[str] = None
-    redis_url: Optional[Union[str, Dict]] = None
-    celery_redis_url: Optional[Union[str, Dict]] = None
+    database_url: str | None = None
+    redis_url: str | dict | None = None
+    celery_redis_url: str | dict | None = None
 
     @staticmethod
     def get_all_config():
@@ -49,7 +46,7 @@ class Settings(BaseSettings):
                 raise ConfigNotFoundError('initdb_config not found, please check your system config')
 
     @staticmethod
-    def _merge_env(section_dict: dict, env_prefix: str, known_fields: list = None) -> dict:
+    def _merge_env(section_dict: dict, env_prefix: str, known_fields: list | None = None) -> dict:
         """
         用环境变量覆盖 section 配置项，实现「.env 优先、数据库兜底」。
 

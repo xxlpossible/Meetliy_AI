@@ -1,8 +1,9 @@
 # backend/utils/llm_service.py
-from openai import AsyncOpenAI  # 确保导入的是异步客户端
-from settings import settings
 import json
-from typing import List
+
+from openai import AsyncOpenAI  # 确保导入的是异步客户端
+
+from settings import settings
 
 
 class LLMService:
@@ -17,7 +18,7 @@ class LLMService:
         )
         self.model_name = qwen.get('model')
 
-    async def stream_answer(self, context: str, question: str, chat_history: List[str] = None):
+    async def stream_answer(self, context: str, question: str, chat_history: list[str] | None = None):
         """
         传入会议上下文与问题，流式返回答案。
         """

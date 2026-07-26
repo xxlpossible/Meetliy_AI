@@ -15,16 +15,14 @@ Chroma 的 metadata 中必须包含 session_id / user_id / time / role / turn_in
 turn_index 计数器由 MySQL 持久化（ChatMessage 表中取 MAX），进程内缓存仅为加速，
 重启后自动从 MySQL 重新播种。
 """
-from datetime import datetime
-from typing import Dict, List, Optional, Any
-
 import uuid
+from datetime import datetime
+from typing import Any
 
 from loguru import logger
 
 from database.models.chatmessage import ChatMessage, ChatMessageDao
 from utils.siliconflow_embedding import db_manager
-
 
 # 系统初始提示词（角色定位、职责）—— 作为 [Role & Policies] 区块内容。
 SYSTEM_ROLE_PROMPT = (
@@ -38,11 +36,11 @@ SYSTEM_ROLE_PROMPT = (
 # ---------------------------------------------------------------------------
 # 内存中的最近历史对话（仅保留近 3 轮 = 6 条），按 session_id 隔离
 # ---------------------------------------------------------------------------
-SESSION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
+SESSION_HISTORY: dict[str, list[dict[str, str]]] = {}
 _SEEDED_SESSIONS: set = set()
 # 进程内 turn_index 缓存（session_id -> 下一个待分配的 turn_index）
 # 权威数据源是 MySQL，重启后通过 _seed_history_from_db 重新播种
-_SESSION_TURN_COUNTERS: Dict[str, int] = {}
+_SESSION_TURN_COUNTERS: dict[str, int] = {}
 
 
 def _seed_history_from_db(session_id: str) -> None:
@@ -92,7 +90,7 @@ def append_history(session_id: str, role: str, content: str) -> None:
         del buf[: len(buf) - 6]
 
 
-def get_recent_history(session_id: str) -> List[Dict[str, str]]:
+def get_recent_history(session_id: str) -> list[dict[str, str]]:
     """获取内存中最近 3 轮对话（最多 6 条）。"""
     _seed_history_from_db(session_id)
     return SESSION_HISTORY.get(session_id, [])[-6:]
@@ -206,7 +204,7 @@ def retrieve_past_memory(
     session_id: str,
     n_results: int = 5,
     current_turn_index: int = 0,
-) -> List[str]:
+) -> list[str]:
     """
     从 Chroma 检索当前会话的过往记忆（排除近 3 轮）。
     
@@ -234,7 +232,7 @@ def retrieve_past_memory(
     if cutoff > 0:
         conditions.append({"turn_index": {"$lt": cutoff}})
     
-    where: Dict[str, Any] = {"$and": conditions} if len(conditions) > 1 else conditions[0]
+    where: dict[str, Any] = {"$and": conditions} if len(conditions) > 1 else conditions[0]
     
     try:
         result = db_manager.search(
@@ -250,7 +248,7 @@ def retrieve_past_memory(
     metadatas = (result.get("metadatas") or [[]])[0]
     documents = (result.get("documents") or [[]])[0]
 
-    memory_texts: List[str] = []
+    memory_texts: list[str] = []
     for doc, meta in zip(documents, metadatas):
         if not doc:
             continue
@@ -270,10 +268,10 @@ def clear_session_history(session_id: str) -> None:
 # ---------------------------------------------------------------------------
 def build_context(
     question: str,
-    meeting_content: List[str],
-    kb_snippets: List[str],
-    recent_history: List[Dict[str, str]],
-    past_memory: List[str],
+    meeting_content: list[str],
+    kb_snippets: list[str],
+    recent_history: list[dict[str, str]],
+    past_memory: list[str],
 ) -> str:
     """
     按统一格式拼接上下文提示词：
@@ -308,7 +306,7 @@ def build_context(
         evidence = "（暂无相关知识库片段）"
 
     # Context：最近历史对话 + 过往记忆
-    context_parts: List[str] = []
+    context_parts: list[str] = []
     for msg in recent_history:
         role_label = "user" if msg.get("role") == "user" else "assistant"
         context_parts.append(f"{role_label}: {msg.get('content', '')}")

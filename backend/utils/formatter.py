@@ -1,14 +1,12 @@
-import json
-import requests
-from typing import List, Dict, Tuple, Optional
 
+import requests
 from loguru import logger
 
 
 class Formatter:
 
     @staticmethod
-    def format_audio_transcript(json_url: str, merge_threshold: int = 3000) -> Tuple[List[str], Optional[str]]:
+    def format_audio_transcript(json_url: str, merge_threshold: int = 3000) -> tuple[list[str], str | None]:
         """
         根据JSON文件的URL下载地址，读取音频识别信息并格式化为指定格式
 
@@ -31,7 +29,7 @@ class Formatter:
         return formatted_output, complete_text
 
     @staticmethod
-    def _download_json(json_url: str) -> Optional[Dict]:
+    def _download_json(json_url: str) -> dict | None:
         """
         下载并解析JSON文件
 
@@ -50,7 +48,7 @@ class Formatter:
             return None
 
     @staticmethod
-    def _extract_sentences_and_text(data: Dict) -> Tuple[List[Dict], Optional[str]]:
+    def _extract_sentences_and_text(data: dict) -> tuple[list[dict], str | None]:
         """
         从JSON数据中提取句子和完整文本
 
@@ -82,7 +80,7 @@ class Formatter:
         return all_sentences, complete_text
 
     @staticmethod
-    def _merge_consecutive_speakers(sentences: List[Dict], merge_threshold: int) -> List[Dict]:
+    def _merge_consecutive_speakers(sentences: list[dict], merge_threshold: int) -> list[dict]:
         """
         合并连续说话人相同的句子
 
@@ -119,7 +117,7 @@ class Formatter:
         return merged_sentences
 
     @staticmethod
-    def _format_sentences(sentences: List[Dict]) -> List[str]:
+    def _format_sentences(sentences: list[dict]) -> list[str]:
         """
         将句子列表格式化为指定格式
 

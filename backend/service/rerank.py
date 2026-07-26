@@ -4,10 +4,11 @@ Rerank 重排序服务
 封装 bge-reranker-v2-m3 模型调用，对 Chroma 搜索结果进行重排序。
 支持单集合/多集合聚合后的统一重排序。
 """
+
 import httpx
-from typing import List, Dict, Tuple, Optional
-from settings import settings
 from loguru import logger
+
+from settings import settings
 
 
 class RerankService:
@@ -17,7 +18,7 @@ class RerankService:
         self.rerank_url = rerank_config.get('base_url')
         self.api_key = rerank_config.get('api_key')
 
-    async def rerank_context(self, question: str, context_docs: List[List[str]], top_k: int = 5) -> List[str]:
+    async def rerank_context(self, question: str, context_docs: list[list[str]], top_k: int = 5) -> list[str]:
         """
         使用 bge-reranker-v2-m3 模型对 Chroma 搜索结果重排序
 
@@ -40,9 +41,9 @@ class RerankService:
     async def rerank_multi_collection(
         self,
         question: str,
-        collection_docs: Dict[str, List[str]],
+        collection_docs: dict[str, list[str]],
         top_k: int = 10
-    ) -> Tuple[List[str], Dict[str, List[str]]]:
+    ) -> tuple[list[str], dict[str, list[str]]]:
         """
         多集合统一重排序：从多个 Chroma 集合收集文档，统一重排序后返回 top_k 结果。
 
@@ -76,7 +77,7 @@ class RerankService:
         reranked_docs = await self._rerank(question, all_docs, top_k)
 
         # 按集合分组
-        per_collection_results: Dict[str, List[str]] = {}
+        per_collection_results: dict[str, list[str]] = {}
         for doc in reranked_docs:
             # 找出该文档属于哪个集合
             for idx, original_doc in enumerate(all_docs):
@@ -88,7 +89,7 @@ class RerankService:
         logger.info(f"知识库多集合重排序完成: 输入 {len(all_docs)} 条，输出 top_k={len(reranked_docs)} 条")
         return reranked_docs, per_collection_results
 
-    async def _rerank(self, question: str, documents: List[str], top_k: int) -> List[str]:
+    async def _rerank(self, question: str, documents: list[str], top_k: int) -> list[str]:
         """
         内部方法：调用 rerank API 进行重排序
         """

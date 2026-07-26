@@ -1,7 +1,7 @@
-from minio import Minio
 from datetime import timedelta
 from io import BytesIO
-import os
+
+from minio import Minio
 
 from settings import settings
 

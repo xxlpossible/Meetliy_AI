@@ -1,23 +1,28 @@
 # task/tasks.py
 import os
 
+from langchain_core.documents import Document
 from loguru import logger
 
-from database.models.transcription import TranscriptionDao, Status
-from database.models.knowledge_file import KnowledgeFileDao, KnowledgeFile, FileState, KnowledgeType
+from database.models.knowledge_file import (
+    FileState,
+    KnowledgeFileDao,
+    KnowledgeType,
+)
+from database.models.transcription import Status, TranscriptionDao
 from langchain_pipeline.agent import MeetingAgent
-from utils.siliconflow_embedding import db_manager
-from utils.splitter import Splitter
 from utils.file_loader import FileLoader
 from utils.markitdown_converter import get_knowledge_type
+from utils.siliconflow_embedding import db_manager
+from utils.splitter import Splitter
+
 from .celery_app import celery_app
-from langchain_core.documents import Document
 
 
 @celery_app.task
 def transcription(
-        public_url: str = None,
-        t_id: str = None
+        public_url: str | None = None,
+        t_id: str | None = None
 ):
     """语音转录后台任务"""
     try:

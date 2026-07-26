@@ -12,17 +12,13 @@
     "dict changed size during iteration"。
 """
 import asyncio
-import json
 import os
 import threading
 import time
-import uuid
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
 
 from fastapi import WebSocket
 from loguru import logger
-
 
 # 录音文件存放目录
 AUDIO_DIR = os.path.join(
@@ -49,12 +45,12 @@ class MeetingRoom:
     """一个活跃的会议房间。"""
     meeting_id: str
     started_at: float  # time.time()，会议房间创建时刻
-    participants: Dict[int, ParticipantConnection] = field(default_factory=dict)
+    participants: dict[int, ParticipantConnection] = field(default_factory=dict)
     # 录音信息注册表：user_id -> {user_id, username, audio_file_path, join_offset_seconds}
     # 即使参会者离开（从 participants 移除），录音记录仍保留，供会议结束时合并使用
-    recordings: Dict[int, dict] = field(default_factory=dict)
+    recordings: dict[int, dict] = field(default_factory=dict)
     # 实时转录文本行（会议结束后持久化到 DB，内存临时存储）
-    transcript_lines: List[str] = field(default_factory=list)
+    transcript_lines: list[str] = field(default_factory=list)
 
 
 class MeetingManager:
@@ -68,7 +64,7 @@ class MeetingManager:
             with cls._instance_lock:
                 if cls._instance is None:
                     obj = super().__new__(cls)
-                    obj._rooms: Dict[str, MeetingRoom] = {}
+                    obj._rooms: dict[str, MeetingRoom] = {}
                     obj._rooms_lock = threading.Lock()
                     obj._ensure_audio_dir()
                     cls._instance = obj
@@ -97,7 +93,7 @@ class MeetingManager:
         with self._rooms_lock:
             return meeting_id in self._rooms
 
-    def get_room(self, meeting_id: str) -> Optional[MeetingRoom]:
+    def get_room(self, meeting_id: str) -> MeetingRoom | None:
         """获取房间引用（不移除）。"""
         with self._rooms_lock:
             return self._rooms.get(meeting_id)
@@ -182,7 +178,7 @@ class MeetingManager:
         # 在合并录音后通过 end_meeting 统一清理，确保不丢失录音信息
         return conn, is_last
 
-    def get_participants(self, meeting_id: str) -> List[dict]:
+    def get_participants(self, meeting_id: str) -> list[dict]:
         """返回房间内当前活跃参会者列表 [{id, name}]。"""
         with self._rooms_lock:
             room = self._rooms.get(meeting_id)
@@ -206,7 +202,7 @@ class MeetingManager:
             if room:
                 room.transcript_lines.append(text)
 
-    def get_transcript_lines(self, meeting_id: str) -> List[str]:
+    def get_transcript_lines(self, meeting_id: str) -> list[str]:
         """获取转录文本行列表（原始列表，不拼接）。"""
         with self._rooms_lock:
             room = self._rooms.get(meeting_id)
@@ -315,7 +311,7 @@ class MeetingManager:
     #  结束会议（收集录音信息）
     # ------------------------------------------------------------------ #
 
-    def end_meeting(self, meeting_id: str) -> List[dict]:
+    def end_meeting(self, meeting_id: str) -> list[dict]:
         """
         结束会议：关闭所有参会者连接与 PCM 文件，返回录音信息供合并。
         返回所有已注册录音 [{user_id, audio_file_path, join_offset_seconds}]，

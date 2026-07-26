@@ -11,11 +11,12 @@
 """
 import json
 import time
-from loguru import logger
+
 import dashscope
 from dashscope.audio.qwen_omni import OmniRealtimeCallback
-from settings import settings
+from loguru import logger
 
+from settings import settings
 
 # 设置 APIKEY（与 realtime_asr.py 一致）
 dashscope_config = settings.get_dashscope_config()

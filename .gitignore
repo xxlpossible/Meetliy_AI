@@ -10,11 +10,21 @@ __pycache__/
 .Python
 *.egg-info/
 .eggs/
+*.egg
 backend/.venv/
 backend/venv/
 backend/env/
 # 依赖锁文件必须纳入版本控制（修正 backend 原 *.lock 误忽略 uv.lock）
 !backend/uv.lock
+
+# ===== Python 工具缓存与测试产物 =====
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
 
 # ===== 运行时数据（backend）=====
 backend/data/
@@ -30,9 +40,11 @@ backend/test
 node_modules/
 frontend/dist/
 frontend/dist-ssr/
+frontend/.vite/
 frontend/*.local
 frontend/auto-imports.d.ts
 frontend/components.d.ts
+coverage/
 *.tsbuildinfo
 
 # ===== 环境变量与密钥 =====
@@ -51,10 +63,13 @@ frontend/components.d.ts
 *.ntvs*
 *.njsproj
 *.sln
+*.txt
 
-# ===== WorkBuddy / 工具元数据 =====
+# ===== WorkBuddy / CodeBuddy 工具元数据 =====
 .workbuddy/
 .agents/
+# CodeBuddy 工作区数据（仅本地保留，不纳入版本控制）
+.codebuddy/
 
 # ===== 系统 / 临时 =====
 .DS_Store

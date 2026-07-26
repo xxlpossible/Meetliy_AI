@@ -7,7 +7,7 @@ Token 设计：
     两种 Token 共用同一 SECRET_KEY 签名，通过 type 声明严格区分，互不通用。
 """
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from dotenv import load_dotenv
@@ -44,7 +44,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict) -> str:
     """签发短期 Access Token（默认 30 分钟）。"""
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": TOKEN_TYPE_ACCESS})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -52,7 +52,7 @@ def create_access_token(data: dict) -> str:
 def create_refresh_token(data: dict) -> str:
     """签发长期 Refresh Token（默认 7 天）。"""
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": TOKEN_TYPE_REFRESH})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 

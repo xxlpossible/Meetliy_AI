@@ -1,9 +1,11 @@
+import asyncio
 import json
-from loguru import logger
+
 import dashscope
 from dashscope.audio.qwen_omni import OmniRealtimeCallback
 from fastapi import WebSocket
-import asyncio
+from loguru import logger
+
 from settings import settings
 
 # 设置APIKEY

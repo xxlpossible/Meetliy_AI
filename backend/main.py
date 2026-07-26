@@ -1,9 +1,9 @@
-import dotenv
-import os
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
+import dotenv
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
+
 from api.router import router
 
 

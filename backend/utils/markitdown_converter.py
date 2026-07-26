@@ -29,14 +29,13 @@ import subprocess
 import tempfile
 import threading
 from pathlib import Path
-from typing import Optional, Set
 
 from loguru import logger
 
 # ==========================================
 # 支持的文件扩展名集合
 # ==========================================
-SUPPORTED_EXTENSIONS: Set[str] = {
+SUPPORTED_EXTENSIONS: set[str] = {
     # —— 文档类 ——
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     # —— 文本/结构化数据 ——
@@ -52,17 +51,17 @@ SUPPORTED_EXTENSIONS: Set[str] = {
 }
 
 # 需要作为纯文本读取的代码/配置扩展名（MarkItDown 不会特殊处理，直接走兜底更稳定）
-_TEXT_FALLBACK_EXTENSIONS: Set[str] = {
+_TEXT_FALLBACK_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp",
     ".go", ".rs", ".rb", ".php", ".sh", ".bat", ".sql",
     ".yaml", ".yml", ".toml", ".ini", ".conf", ".properties", ".log", ".rst",
 }
 
 # 音频扩展名（走硅基流动 SenseVoiceSmall 转录，不走 MarkItDown）
-AUDIO_EXTENSIONS: Set[str] = {".mp3", ".wav", ".m4a", ".flac"}
+AUDIO_EXTENSIONS: set[str] = {".mp3", ".wav", ".m4a", ".flac"}
 
 # 图片扩展名（走硅基流动 PaddleOCR-VL-1.5 OCR，不走 MarkItDown）
-IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
+IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
 
 
 def get_knowledge_type(file_path_or_ext: str) -> int:
@@ -341,7 +340,7 @@ def _enhanced_pdf_processing(path: str) -> str:
 # ==========================================
 # .doc 转 .docx
 # ==========================================
-def _convert_doc_to_docx(doc_path: str) -> Optional[str]:
+def _convert_doc_to_docx(doc_path: str) -> str | None:
     """
     将 .doc 文件转换为 .docx 文件（跨平台）。
 
@@ -371,7 +370,7 @@ def _convert_doc_to_docx(doc_path: str) -> Optional[str]:
     return None
 
 
-def _convert_doc_via_libreoffice(doc_path: str) -> Optional[str]:
+def _convert_doc_via_libreoffice(doc_path: str) -> str | None:
     """
     通过 LibreOffice headless 命令行将 .doc 转换为 .docx（跨平台）。
 
@@ -444,7 +443,7 @@ def _convert_doc_via_libreoffice(doc_path: str) -> Optional[str]:
         return None
 
 
-def _convert_doc_via_win32(doc_path: str) -> Optional[str]:
+def _convert_doc_via_win32(doc_path: str) -> str | None:
     """
     通过 Windows COM (Word) 将 .doc 转换为 .docx（仅 Windows）。
 
@@ -688,6 +687,6 @@ def is_supported(file_path: str) -> bool:
     return ext in SUPPORTED_EXTENSIONS
 
 
-def get_supported_extensions() -> Set[str]:
+def get_supported_extensions() -> set[str]:
     """返回支持的文件扩展名集合（用于接口层校验）。"""
     return SUPPORTED_EXTENSIONS

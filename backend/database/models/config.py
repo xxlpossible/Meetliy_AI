@@ -1,7 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import Column, DateTime, String, text, Text
+from sqlalchemy import Column, DateTime, Text, text
 from sqlmodel import Field, SQLModel, select
 
 from database.base import session_getter
@@ -10,10 +9,10 @@ from database.base import session_getter
 class ConfigBase(SQLModel):
     key: str = Field(index=True, unique=True)
     value: str = Field(sa_column=Column(Text))
-    comment: Optional[str] = Field(index=False)
-    create_time: Optional[datetime] = Field(sa_column=Column(
+    comment: str | None = Field(index=False)
+    create_time: datetime | None = Field(sa_column=Column(
         DateTime, nullable=False, index=True, server_default=text('CURRENT_TIMESTAMP')))
-    update_time: Optional[datetime] = Field(
+    update_time: datetime | None = Field(
         sa_column=Column(DateTime,
                          nullable=False,
                          server_default=text('CURRENT_TIMESTAMP'),
@@ -21,7 +20,7 @@ class ConfigBase(SQLModel):
 
 
 class Config(ConfigBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
 
 
 class ConfigDao(Config):

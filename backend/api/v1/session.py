@@ -3,14 +3,13 @@
 
 注意：无 add 接口，因为 Session 在 WebSocket /ws/chat 中自动创建。
 """
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from loguru import logger
+from pydantic import BaseModel
 
 from api.schemas import resp_200
-from database.models.chat_session import ChatSession, ChatSessionDao
+from database.models.chat_session import ChatSessionDao
 from database.models.user import User
 from utils.dependencies import get_current_user
 from utils.siliconflow_embedding import db_manager
@@ -21,22 +20,22 @@ router = APIRouter(prefix="/session", tags=["session"])
 class SessionListResponse(BaseModel):
     """会话列表响应项"""
     session_id: str
-    session_name: Optional[str]
-    task_ids: Optional[List[str]]
-    knowledge_ids: Optional[List[str]]
+    session_name: str | None
+    task_ids: list[str] | None
+    knowledge_ids: list[str] | None
     need_kb: bool
     user_id: int
-    create_time: Optional[str]
-    update_time: Optional[str]
+    create_time: str | None
+    update_time: str | None
 
 
 class SessionUpdateRequest(BaseModel):
     """更新会话请求体"""
     session_id: str
-    session_name: Optional[str] = None
-    task_ids: Optional[List[str]] = None
-    knowledge_ids: Optional[List[str]] = None
-    need_kb: Optional[bool] = None
+    session_name: str | None = None
+    task_ids: list[str] | None = None
+    knowledge_ids: list[str] | None = None
+    need_kb: bool | None = None
 
 
 class SessionListRequest(BaseModel):

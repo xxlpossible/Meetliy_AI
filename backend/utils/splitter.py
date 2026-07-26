@@ -20,12 +20,11 @@
     - Markdown 分块优先保证结构完整，通用分块优先保证长度均匀
 """
 
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import (
-    RecursiveCharacterTextSplitter,
     MarkdownTextSplitter,
+    RecursiveCharacterTextSplitter,
 )
 from loguru import logger
 
@@ -41,7 +40,7 @@ class Splitter:
     _SEPARATORS = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", ",", "，"]
 
     @classmethod
-    def split_documents(cls, documents: List[Document]) -> List[Document]:
+    def split_documents(cls, documents: list[Document]) -> list[Document]:
         """
         通用递归分块（适用于纯文本，如转录结果）。
 
@@ -62,7 +61,7 @@ class Splitter:
         return chunks
 
     @classmethod
-    def split_markdown_documents(cls, documents: List[Document]) -> List[Document]:
+    def split_markdown_documents(cls, documents: list[Document]) -> list[Document]:
         """
         Markdown 结构化分块（适用于 MarkItDown 转换后的 MD 文档）。
 

@@ -1,8 +1,8 @@
-from database.service import DatabaseService
-import os
 from contextlib import contextmanager
+
 from sqlmodel import Session
 
+from database.service import DatabaseService
 from settings import settings
 
 db_service: 'DatabaseService' = DatabaseService(settings.database_url)

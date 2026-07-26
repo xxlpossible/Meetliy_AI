@@ -1,6 +1,7 @@
 import os
-import dotenv
+
 import alibabacloud_oss_v2 as oss
+import dotenv
 
 
 class OSSClientUtil:
@@ -10,7 +11,7 @@ class OSSClientUtil:
     - 提供文件上传、预签名 URL 生成等功能
     """
 
-    def __init__(self, env_path: str = None, region: str = "cn-beijing"):
+    def __init__(self, env_path: str | None = None, region: str = "cn-beijing"):
         if env_path is None:
             env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
         # 1. 加载环境变量
@@ -31,7 +32,7 @@ class OSSClientUtil:
     # -----------------------------
     # 上传文件
     # -----------------------------
-    def upload_file(self, bucket: str = "java-web-deng", key: str = None, file_path: str = None):
+    def upload_file(self, bucket: str = "java-web-deng", key: str | None = None, file_path: str | None = None):
         """
         上传本地文件到 OSS
         :param bucket: OSS Bucket 名称
@@ -48,7 +49,7 @@ class OSSClientUtil:
     # -----------------------------
     # 生成预签名 URL
     # -----------------------------
-    def generate_presigned_url(self, bucket: str = "java-web-deng", key: str = None):
+    def generate_presigned_url(self, bucket: str = "java-web-deng", key: str | None = None):
         """
         生成 OSS GET 预签名 URL
         :param bucket: OSS Bucket 名称

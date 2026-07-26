@@ -1,5 +1,4 @@
 import pickle
-from typing import Dict
 
 import redis
 from loguru import logger
@@ -15,7 +14,7 @@ from settings import settings
 class RedisClient:
     def __init__(self, url=None, max_connections=100):
         # 集群模式 和 哨兵模式
-        if isinstance(settings.redis_url, Dict):
+        if isinstance(settings.redis_url, dict):
             redis_conf = dict(settings.redis_url)
             # pop 移除并返回字典中指定键（key）对应的值 如果该键不存在，可以返回一个默认值
             mode = redis_conf.pop('mode', 'sentinel')
@@ -174,7 +173,7 @@ class RedisClient:
         finally:
             self.close()
 
-    def l_pop(self, key, count: int = None):
+    def l_pop(self, key, count: int | None = None):
         try:
             self.cluster_nodes(key)
             return self.connection.lpop(key, count)

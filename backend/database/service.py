@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING
 
-from sqlmodel import Session, SQLModel, create_engine
 from loguru import logger
-from sqlalchemy.exc import OperationalError
+from sqlmodel import Session, create_engine
+
 from service.base import Service
 
 if TYPE_CHECKING:

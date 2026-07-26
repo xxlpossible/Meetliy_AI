@@ -1,17 +1,17 @@
 import uuid
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from loguru import logger
 
 from api.schemas import resp_200
-from database.models.user import User
 from database.models.knowledge import Knowledge, KnowledgeDao
 from database.models.knowledge_file import KnowledgeFileDao
+from database.models.user import User
 from database.schemas.schema import (
     KnowledgeCreate,
-    KnowledgeUpdate,
-    KnowledgeQuery,
     KnowledgeDelete,
+    KnowledgeQuery,
+    KnowledgeUpdate,
 )
 from utils.dependencies import get_current_user
 from utils.siliconflow_embedding import db_manager
@@ -89,8 +89,8 @@ async def create_knowledge(
         collection_name = f"collection_kb_{knowledge.id}"
         db_manager.get_or_create_collection(name=collection_name)
         logger.info(f"知识库向量集合创建成功，集合名称：{collection_name}")
-    except Exception as e:
-        logger.error(f"知识库向量集合创建失败", exc_info=True)
+    except Exception:
+        logger.error("知识库向量集合创建失败", exc_info=True)
     
     return resp_200(data={
         "id": knowledge.id,
