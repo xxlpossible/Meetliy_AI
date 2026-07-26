@@ -59,6 +59,15 @@ export interface MeetingListData {
   total: number
 }
 
+/** 会议状态分布统计（GET /meeting/statistics） */
+export interface MeetingStatisticsData {
+  total: number      // 会议总数
+  active: number     // 会议进行中（ACTIVE=0）
+  analyzing: number  // 解析中（END_AND_ANALYZE=1）
+  finished: number   // 解析完成（FINISH=2）
+  error: number      // 解析异常（ERROR=-1）
+}
+
 export interface Participant {
   id: number
   name: string

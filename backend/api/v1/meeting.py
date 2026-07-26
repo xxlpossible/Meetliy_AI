@@ -120,6 +120,29 @@ async def list_meetings(
     return resp_200(data={"data": data, "total": total})
 
 
+@router.get("/statistics", summary="会议状态分布统计")
+async def meeting_statistics(
+        current_user: User = Depends(get_current_user),
+):
+    """
+    统计所有会议的状态数量分布，供前端 DashBoard 数字仪表盘使用。
+    返回会议总数，以及解析完成 / 解析中 / 解析异常（含会议进行中）的数量。
+    """
+    dist = MeetingDao.count_status_distribution(current_user.id)
+    total = sum(dist.values())
+    return resp_200(data={
+        "total": total,
+        # 会议进行中（尚未结束、未进入解析）
+        "active": dist.get(MeetingStatus.ACTIVE.value, 0),
+        # 解析中：会议已结束，正在后台解析（END_AND_ANALYZE）
+        "analyzing": dist.get(MeetingStatus.END_AND_ANALYZE.value, 0),
+        # 解析完成（FINISH）
+        "finished": dist.get(MeetingStatus.FINISH.value, 0),
+        # 解析异常（ERROR）
+        "error": dist.get(MeetingStatus.ERROR.value, 0),
+    })
+
+
 @router.post("/{meeting_id}/join", summary="加入会议")
 async def join_meeting(
         meeting_id: str,

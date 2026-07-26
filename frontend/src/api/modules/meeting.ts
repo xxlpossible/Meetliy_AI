@@ -6,6 +6,7 @@ import { request } from '../request'
 import type {
   ApiResponse,
   MeetingListData,
+  MeetingStatisticsData,
   CreateMeetingData,
   JoinMeetingData,
   Participant,
@@ -69,6 +70,16 @@ export const meetingApi = {
   async deleteMeeting(meetingId: string): Promise<void> {
     const resp = await request.delete<ApiResponse<void>>(`/meeting/${meetingId}`)
     if (resp.data.status_code === 200) return
+    throw new Error(resp.data.status_message)
+  },
+
+  /**
+   * 会议状态分布统计（DashBoard 数字仪表盘）
+   * 后端 GET /meeting/statistics，返回全部会议的总数及各状态数量
+   */
+  async statistics(): Promise<MeetingStatisticsData> {
+    const resp = await request.get<ApiResponse<MeetingStatisticsData>>('/meeting/statistics')
+    if (resp.data.status_code === 200) return resp.data.data
     throw new Error(resp.data.status_message)
   },
 

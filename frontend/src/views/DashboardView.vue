@@ -8,7 +8,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { meetingApi } from '@/api'
-import type { MeetingItem, MeetingStatusItem } from '@/api/types'
+import type { MeetingItem, MeetingStatusItem, MeetingStatisticsData } from '@/api/types'
 import { MeetingStatus } from '@/api/types'
 
 const router = useRouter()
@@ -104,8 +104,8 @@ async function loadData() {
       await refreshStatuses(meetingIds)
     }
 
-    // 计算统计
-    computeStats()
+    // 用后端统计接口刷新仪表盘，替代前端基于列表的自行统计（避免只看当前分页）
+    await loadStatistics()
   } catch (e: any) {
     ElMessage.error(e.message || '加载失败，请稍后重试')
   } finally {
@@ -163,23 +163,25 @@ async function refreshStatuses(ids?: string[]) {
   const statusList = await meetingApi.getStatus(meetingIds)
   statusList.forEach((s) => meetingStatusMap.set(s.meeting_id, s))
 
-  // 状态可能已变化，重新计算统计
-  computeStats()
+  // 状态可能已变化，重新拉取统计（用于仪表盘数字实时更新）
+  loadStatistics()
 }
 
-function computeStats() {
-  stats.total = meetingList.value.length
-  stats.finish = 0
-  stats.analyzing = 0
-  stats.active = 0
-  stats.error = 0
-  meetingList.value.forEach((m) => {
-    const s = resolveStatus(m)
-    if (s === MeetingStatus.FINISH) stats.finish++
-    else if (s === MeetingStatus.ERROR) stats.error++
-    else if (s === MeetingStatus.END_AND_ANALYZE) stats.analyzing++
-    else if (s === MeetingStatus.ACTIVE) stats.active++
-  })
+/**
+ * 从后端统计接口拉取会议状态分布，填充仪表盘数字。
+ * 取代原先基于列表前端统计的方式，避免只统计到当前分页的会议。
+ */
+async function loadStatistics() {
+  try {
+    const data: MeetingStatisticsData = await meetingApi.statistics()
+    stats.total = data.total
+    stats.active = data.active
+    stats.analyzing = data.analyzing
+    stats.finish = data.finished
+    stats.error = data.error
+  } catch {
+    // 统计失败不应阻断会议列表展示，静默忽略
+  }
 }
 
 // ---- 自动轮询 ----

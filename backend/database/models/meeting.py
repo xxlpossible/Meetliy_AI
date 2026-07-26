@@ -170,3 +170,22 @@ class MeetingDao:
             total_count = session.scalar(count_statement) or 0
 
             return results, total_count
+
+    @classmethod
+    def count_status_distribution(cls, user_id: int | None = None) -> dict:
+        """
+        统计未删除会议按状态的分布，返回 {status(int): count(int)}。
+        供 DashBoard 数字仪表盘展示各状态会议数量。
+        传入 user_id 时仅统计该用户可见（参与或被主持）的会议，与列表接口保持一致。
+        """
+        with session_getter() as session:
+            conditions = [Meeting.is_delete == MeetingDelete.NOT.value]
+            if user_id:
+                conditions.append(func.json_contains(Meeting.user_ids, cast(user_id, JSON)))
+            statement = (
+                select(Meeting.status, func.count())
+                .where(and_(*conditions))
+                .group_by(Meeting.status)
+            )
+            rows = session.exec(statement).all()
+            return {int(status): count for status, count in rows}
