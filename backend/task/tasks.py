@@ -128,7 +128,7 @@ def transcription(
                     collection_name=collection_name,
                     documents=sentences,
                 )
-                logger.info(f"原始句子入库: {len(sentences)} 条")
+                logger.info(f"sentence入库: {len(sentences)} 条")
 
             # 再存入细粒度 chunk（带 chunk_index / meeting_id metadata）
             if chunk_page_contents:

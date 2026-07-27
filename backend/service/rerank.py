@@ -120,7 +120,16 @@ class RerankService:
             # 按相关性得分降序排序
             rerank_results.sort(key=lambda x: x['relevance_score'], reverse=True)
 
-            return [item["document"] for item in rerank_results[:top_k]]
+            # 防御性处理：不同 rerank API 返回的 document 字段可能是
+            # 字符串 "text" 或嵌套 dict {"text": "..."}
+            docs: list[str] = []
+            for item in rerank_results[:top_k]:
+                doc = item.get("document", "")
+                if isinstance(doc, dict):
+                    doc = doc.get("text", "") or doc.get("content", "") or str(doc)
+                if doc:
+                    docs.append(doc)
+            return docs
 
         except Exception as e:
             logger.error(f"Rerank 调用失败: {e}")

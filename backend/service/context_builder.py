@@ -327,7 +327,20 @@ def build_context(
 
     # 会议内容区块
     if meeting_content:
-        clean_meeting = "\n---\n".join(m for m in meeting_content if m)
+        try:
+            clean_meeting = "\n---\n".join(m for m in meeting_content if m)
+        except TypeError as e:
+            # 诊断：meeting_content 可能混入了非字符串类型
+            item_types = {type(m).__name__ for m in meeting_content if m}
+            logger.error(
+                f"[ContextBuilder] 会议内容 join 失败: {e}, "
+                f"item types: {item_types}"
+            )
+            # 尽力转换为字符串
+            clean_meeting = "\n---\n".join(
+                str(m) if not isinstance(m, str) else m
+                for m in meeting_content if m
+            )
         human_parts.append(
             "以下是本次会议的相关内容：\n"
             "---\n"
@@ -337,7 +350,13 @@ def build_context(
 
     # 知识库区块
     if kb_snippets:
-        clean_kb = "\n---\n".join(s for s in kb_snippets if s)
+        try:
+            clean_kb = "\n---\n".join(s for s in kb_snippets if s)
+        except TypeError:
+            clean_kb = "\n---\n".join(
+                str(s) if not isinstance(s, str) else s
+                for s in kb_snippets if s
+            )
         human_parts.append(
             "以下是相关知识库参考信息：\n"
             "---\n"

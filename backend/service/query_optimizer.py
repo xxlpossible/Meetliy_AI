@@ -98,7 +98,7 @@ class QueryOptimizer:
             api_key=qwen.get('api_key', None),
             base_url=qwen.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1"),
         )
-        self._llm_timeout: float = 3.0  # LLM 调用超时（秒）
+        self._llm_timeout: float = 30.0  # LLM 调用超时（秒），分类+改写需要足够的推理时间
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -165,13 +165,56 @@ class QueryOptimizer:
     # ------------------------------------------------------------------
     async def _call_llm(self, question: str) -> dict[str, Any]:
         """调用 LLM 获取分类 + 改写结果。"""
-        prompt = _CLASSIFY_AND_REWRITE_PROMPT.format(question=question)
-        response = await self._model.ainvoke([HumanMessage(content=prompt)])
-        content = getattr(response, "content", "") or ""
+        # 注意：不能用 .format()，因为 prompt 中的 JSON 示例包含 {query_type} 等花括号
+        prompt = _CLASSIFY_AND_REWRITE_PROMPT.replace("{question}", question)
+        response = None
+        content = ""
 
-        # 尝试提取 JSON（LLM 可能在 JSON 前后附加文字）
-        json_text = self._extract_json(content)
-        parsed: dict = json.loads(json_text)
+        try:
+            response = await self._model.ainvoke([HumanMessage(content=prompt)])
+            raw = getattr(response, "content", "")
+
+            # 防御：LangChain 某些模型返回的 content 可能是 list[dict] 而非 str
+            if isinstance(raw, list):
+                content = "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in raw
+                )
+            elif isinstance(raw, str):
+                content = raw
+            else:
+                content = str(raw)
+
+            # 尝试提取 JSON（LLM 可能在 JSON 前后附加文字）
+            json_text = self._extract_json(content)
+
+            parsed: dict = json.loads(json_text)
+
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[QueryOptimizer] JSON 解析失败: {e}\n"
+                f"  原始 LLM 输出 (前500字符): {content[:500]}\n"
+                f"  提取的 JSON 文本 (前300字符): {json_text[:300]}"
+            )
+            raise
+        except Exception as e:
+            # 捕获其他所有异常（网络错误、API 错误、类型错误等）
+            content_preview = ""
+            try:
+                content_preview = content[:500]
+            except Exception:
+                content_preview = repr(content)[:500]
+            raw_preview = ""
+            try:
+                raw_preview = str(getattr(response, "content", ""))[:300]
+            except Exception:
+                raw_preview = repr(response)[:300]
+            logger.error(
+                f"[QueryOptimizer] LLM 调用异常 ({type(e).__name__}): {e}\n"
+                f"  LLM 原始响应 (前300字符): {raw_preview}\n"
+                f"  处理后内容 (前500字符): {content_preview}"
+            )
+            raise
 
         query_type = parsed.get("query_type", "").strip()
         rewritten = parsed.get("rewritten_queries", [])

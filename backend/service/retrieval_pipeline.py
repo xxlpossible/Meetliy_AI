@@ -362,8 +362,8 @@ class RetrievalPipeline:
                 collection_docs=collection_docs,
                 top_k=top_k,
             )
-            reranked_text = [item.get('text', '') for item in reranked]
-            return "\n".join(reranked_text)
+            # rerank_multi_collection 返回 list[str]，已排序好的文本
+            return "\n".join(reranked)
         except Exception as e:
             logger.error(f"[RetrievalPipeline] KB rerank 失败: {e}")
             all_docs: list[str] = []

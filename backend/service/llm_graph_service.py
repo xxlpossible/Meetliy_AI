@@ -59,7 +59,7 @@ class ChatAgent:
     # =========================
     # Nodes
     # =========================
-    def _llm_call(self, state: dict):
+    async def _llm_call(self, state: dict):
         """
         LLM 调用节点（重构版）
 
@@ -109,7 +109,7 @@ class ChatAgent:
         )
 
         # 使用消息列表调用 LLM
-        llm_message = self.model.invoke(messages)
+        llm_message = await self.model.ainvoke(messages)
         logger.info("✅ 调用大模型完成")
 
         return {
