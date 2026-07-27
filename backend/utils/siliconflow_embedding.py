@@ -156,6 +156,51 @@ class ChromaDBManager:
         logger.info(f"已从集合 {collection_name} 查询文件片段: {file_id}")
         return results
 
+    def get_by_chunk_index_range(
+        self,
+        collection_name: str,
+        start_index: int,
+        end_index: int,
+    ) -> list[str]:
+        """
+        按 chunk_index 范围查询文档（用于相邻扩展，不依赖向量相似度）。
+
+        Args:
+            collection_name: 集合名称
+            start_index: 起始 chunk_index（包含）
+            end_index: 结束 chunk_index（不包含）
+
+        Returns:
+            匹配的文档文本列表
+        """
+        try:
+            collection = self.client.get_collection(collection_name)
+            results = collection.get(
+                where={
+                    "$and": [
+                        {"chunk_index": {"$gte": start_index}},
+                        {"chunk_index": {"$lt": end_index}},
+                    ]
+                },
+                include=["documents", "metadatas"]
+            )
+            docs = results.get("documents", []) or []
+            metadatas = results.get("metadatas", []) or []
+
+            # 按 chunk_index 排序返回
+            indexed: list[tuple[int, str]] = []
+            for doc, meta in zip(docs, metadatas):
+                if doc and meta:
+                    idx = meta.get("chunk_index", -1)
+                    if idx >= 0:
+                        indexed.append((idx, str(doc)))
+
+            indexed.sort(key=lambda x: x[0])
+            return [doc for _, doc in indexed]
+        except Exception as e:
+            logger.warning(f"按 chunk_index 范围查询失败 (collection={collection_name}): {e}")
+            return []
+
     def delete_by_file_id(self, knowledge_id: str, file_id: str):
         """
         根据 file_id 删除指定知识库中的所有相关向量片段

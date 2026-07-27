@@ -22,14 +22,14 @@ export const chatApi = {
   async updateSession(
     sessionId: string,
     sessionName?: string,
-    taskIds?: string[],
+    meetingIds?: string[],
     knowledgeIds?: string[],
     needKb?: boolean
-  ): Promise<{ session_id: string; session_name: string | null; task_ids: string[] | null; knowledge_ids: string[] | null; need_kb: boolean | null; update_time: string | null }> {
+  ): Promise<{ session_id: string; session_name: string | null; meeting_ids: string[] | null; knowledge_ids: string[] | null; need_kb: boolean | null; update_time: string | null }> {
     const resp = await request.post<ApiResponse<any>>('/session/update', {
       session_id: sessionId,
       session_name: sessionName,
-      task_ids: taskIds,
+      meeting_ids: meetingIds,
       knowledge_ids: knowledgeIds,
       need_kb: needKb,
     })

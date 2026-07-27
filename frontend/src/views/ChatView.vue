@@ -29,8 +29,8 @@ const showEditContextModal = ref(false)
 const currentSession = computed(() => chatStore.currentSession)
 const sessionName = computed(() => currentSession.value?.session_name || '新会话')
 const selectedMeetings = computed(() => {
-  if (!currentSession.value?.task_ids) return []
-  return chatStore.availableMeetings.filter(m => currentSession.value!.task_ids.includes(m.id))
+  if (!currentSession.value?.meeting_ids) return []
+  return chatStore.availableMeetings.filter(m => currentSession.value!.meeting_ids.includes(m.id))
 })
 const selectedKnowledge = computed(() => {
   if (!currentSession.value?.knowledge_ids) return []
@@ -79,9 +79,9 @@ function openNewChatModal() {
   showNewChatModal.value = true
 }
 
-function handleStartNewChat(data: { sessionId: string; taskIds: string[]; knowledgeIds: string[]; needKb: boolean }) {
+function handleStartNewChat(data: { sessionId: string; meetingIds: string[]; knowledgeIds: string[]; needKb: boolean }) {
   // 创建本地会话（不立即连接 WS，发消息时按需连接）
-  chatStore.createLocalSession(data.sessionId, data.taskIds, data.knowledgeIds, data.needKb)
+  chatStore.createLocalSession(data.sessionId, data.meetingIds, data.knowledgeIds, data.needKb)
   showNewChatModal.value = false
 }
 
@@ -93,9 +93,9 @@ function openEditContextModal() {
   showEditContextModal.value = true
 }
 
-async function handleEditContextSaved(data: { taskIds: string[]; knowledgeIds: string[]; needKb: boolean }) {
+async function handleEditContextSaved(data: { meetingIds: string[]; knowledgeIds: string[]; needKb: boolean }) {
   if (!currentSession.value) return
-  await chatStore.syncSessionContext(currentSession.value.session_id, data.taskIds, data.knowledgeIds)
+  await chatStore.syncSessionContext(currentSession.value.session_id, data.meetingIds, data.knowledgeIds)
   showEditContextModal.value = false
   ElMessage.success('讨论范围已更新')
 }
@@ -122,7 +122,7 @@ async function handleSendMessage() {
   await chatSSE.sendQuestion(
     currentSession.value.session_id,
     text,
-    currentSession.value.task_ids,
+    currentSession.value.meeting_ids,
     currentSession.value.knowledge_ids,
     currentSession.value.need_kb
   )
@@ -214,8 +214,8 @@ onMounted(async () => {
                   {{ session.update_time || '刚刚' }}
                 </div>
                 <div class="chat-item-tags">
-                  <span v-if="session.task_ids?.length" class="chat-item-tag meeting">
-                    {{ session.task_ids.length }} 个会议
+                  <span v-if="session.meeting_ids?.length" class="chat-item-tag meeting">
+                    {{ session.meeting_ids.length }} 个会议
                   </span>
                   <span v-if="session.knowledge_ids?.length" class="chat-item-tag kb">
                     {{ session.knowledge_ids.length }} 个知识库

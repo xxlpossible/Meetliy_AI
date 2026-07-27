@@ -42,7 +42,7 @@ class ChatSSERequest(SQLModel):
     """SSE 流式聊天请求体"""
     question: str = Field(..., description="用户问题")
     session_id: str = Field(..., description="会话ID")
-    task_ids: list[str] | None = Field(default=None, description="会议任务ID列表")
+    meeting_ids: list[str] | None = Field(default=None, description="会议ID列表")
     need_kb: bool | None = Field(default=False, description="是否查询知识库")
     knowledge_ids: list[str] | None = Field(default=None, description="知识库ID列表")
 

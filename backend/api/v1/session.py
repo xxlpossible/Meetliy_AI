@@ -21,7 +21,7 @@ class SessionListResponse(BaseModel):
     """会话列表响应项"""
     session_id: str
     session_name: str | None
-    task_ids: list[str] | None
+    meeting_ids: list[str] | None
     knowledge_ids: list[str] | None
     need_kb: bool
     user_id: int
@@ -33,7 +33,7 @@ class SessionUpdateRequest(BaseModel):
     """更新会话请求体"""
     session_id: str
     session_name: str | None = None
-    task_ids: list[str] | None = None
+    meeting_ids: list[str] | None = None
     knowledge_ids: list[str] | None = None
     need_kb: bool | None = None
 
@@ -63,7 +63,7 @@ async def list_sessions(
             "session_id": s.session_id,
             "session_name": s.session_name,
             "user_id": s.user_id,
-            "task_ids": s.task_ids or [],
+            "meeting_ids": s.meeting_ids or [],
             "knowledge_ids": s.knowledge_ids or [],
             "need_kb": s.need_kb,
             "create_time": str(s.create_time) if s.create_time else None,
@@ -96,8 +96,8 @@ async def update_session(
 
     if body.session_name is not None:
         session.session_name = body.session_name
-    if body.task_ids is not None:
-        session.task_ids = body.task_ids
+    if body.meeting_ids is not None:
+        session.meeting_ids = body.meeting_ids
     if body.knowledge_ids is not None:
         session.knowledge_ids = body.knowledge_ids
     if body.need_kb is not None:
@@ -108,7 +108,7 @@ async def update_session(
     return resp_200(data={
         "session_id": session.session_id,
         "session_name": session.session_name,
-        "task_ids": session.task_ids,
+        "meeting_ids": session.meeting_ids,
         "knowledge_ids": session.knowledge_ids,
         "need_kb": session.need_kb,
         "update_time": str(session.update_time) if session.update_time else None,

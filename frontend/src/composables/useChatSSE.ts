@@ -28,14 +28,14 @@ export function useChatSSE() {
    * 发送 SSE 流式请求
    * @param sessionId 会话 ID
    * @param question 用户问题
-   * @param taskIds 会议任务 ID 列表
+   * @param meetingIds 会议 ID 列表
    * @param knowledgeIds 知识库 ID 列表
    * @param needKb 是否查询知识库
    */
   async function sendQuestion(
     sessionId: string,
     question: string,
-    taskIds: string[],
+    meetingIds: string[],
     knowledgeIds: string[],
     needKb: boolean
   ): Promise<void> {
@@ -64,7 +64,7 @@ export function useChatSSE() {
         body: JSON.stringify({
           question,
           session_id: sessionId,
-          task_ids: taskIds,
+          meeting_ids: meetingIds,
           knowledge_ids: knowledgeIds,
           need_kb: needKb,
         }),
@@ -137,7 +137,7 @@ export function useChatSSE() {
       if (retryAttempts.value < maxRetryAttempts) {
         retryAttempts.value++
         retryTimer.value = setTimeout(() => {
-          sendQuestion(sessionId, question, taskIds, knowledgeIds, needKb)
+          sendQuestion(sessionId, question, meetingIds, knowledgeIds, needKb)
         }, 2000 * retryAttempts.value)
       }
     } finally {

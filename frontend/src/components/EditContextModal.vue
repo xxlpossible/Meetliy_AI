@@ -17,7 +17,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'save', data: { taskIds: string[]; knowledgeIds: string[]; needKb: boolean }): void
+  (e: 'save', data: { meetingIds: string[]; knowledgeIds: string[]; needKb: boolean }): void
 }>()
 
 const chatStore = useChatStore()
@@ -32,7 +32,7 @@ const knowledgePage = ref(1)
 const pageSize = 5
 
 // ===== 计算属性 =====
-const selectedMeetingCount = computed(() => chatStore.selectedTaskIds.length)
+const selectedMeetingCount = computed(() => chatStore.selectedMeetingIds.length)
 const selectedKbCount = computed(() => chatStore.selectedKnowledgeIds.length)
 
 const meetingTotal = computed(() => chatStore.meetingTotal)
@@ -74,7 +74,7 @@ function handleKnowledgePageChange(page: number) {
 // ===== 选择操作 =====
 
 function isMeetingSelected(meeting: MeetingItem): boolean {
-  return chatStore.selectedTaskIds.includes(meeting.id)
+  return chatStore.selectedMeetingIds.includes(meeting.id)
 }
 
 function isKnowledgeSelected(kb: KnowledgeItem): boolean {
@@ -93,7 +93,7 @@ function toggleKnowledge(kb: KnowledgeItem) {
 
 function handleSave() {
   emit('save', {
-    taskIds: [...chatStore.selectedTaskIds],
+    meetingIds: [...chatStore.selectedMeetingIds],
     knowledgeIds: [...chatStore.selectedKnowledgeIds],
     needKb: chatStore.needKb,
   })

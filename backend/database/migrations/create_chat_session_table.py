@@ -42,7 +42,7 @@ def migrate():
                 `session_id` VARCHAR(255) NOT NULL,
                 `session_name` VARCHAR(255) DEFAULT NULL,
                 `user_id` INT NOT NULL,
-                `task_ids` JSON NOT NULL COMMENT '关联的会议任务ID列表',
+                `meeting_ids` JSON NOT NULL COMMENT '关联的会议ID列表',
                 `knowledge_ids` JSON NOT NULL COMMENT '关联的知识库ID列表',
                 `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

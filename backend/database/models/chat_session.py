@@ -24,10 +24,10 @@ class ChatSessionBase(SQLModel):
         sa_column=Column(String(255), nullable=True, comment="会话名称，默认取用户第一条问题")
     )
     user_id: int = Field(nullable=False, index=True, description="会话创建者用户ID")
-    # 关联的会议任务ID列表，存为 JSON 数组
-    task_ids: list[str] | None = Field(
+    # 关联的会议ID列表，存为 JSON 数组
+    meeting_ids: list[str] | None = Field(
         default_factory=list,
-        sa_column=Column(JSON, nullable=False, comment="关联的会议任务ID列表")
+        sa_column=Column(JSON, nullable=False, comment="关联的会议ID列表")
     )
     # 关联的知识库ID列表，存为 JSON 数组
     knowledge_ids: list[str] | None = Field(

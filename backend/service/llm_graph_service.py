@@ -1,11 +1,11 @@
 """
 LangGraph 对话工作流
 
-架构：
-- 从多集合收集数据：会议内容集合、知识库集合、记忆集合
-- 统一重排序
-- 拼接上下文提示词
-- 流式生成回答
+架构（重构版）：
+- RetrievalPipeline 统一编排多路检索（含查询分类、改写、相邻扩展、rerank）
+- context_builder 构建 SystemMessage + HumanMessage（角色分离，无 TAG 泄漏）
+- LangGraph 流式生成回答
+- 四级降级兜底代替硬错误返回
 - 存储聊天记录
 """
 
@@ -14,7 +14,7 @@ from typing import Annotated
 
 from fastapi import WebSocket
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import AIMessageChunk
 from langgraph.graph import END, START, StateGraph
 from loguru import logger
 from typing_extensions import TypedDict
@@ -27,20 +27,21 @@ from service.context_builder import (
     persist_chat_message,
     retrieve_past_memory,
 )
-from service.rerank import rerank
+from service.retrieval_pipeline import RetrievalPipeline
 from settings import settings
-from utils.siliconflow_embedding import db_manager
 
 
-# State 定义 - 移除了 summary 字段
+# State 定义（扩展版）
 class ChatState(TypedDict):
     messages: Annotated[list, operator.add]
     question: str
-    meeting_content: str
-    kb_snippets: str
+    meeting_content: list[str]                # 改为列表，直接来自 RetrievalPipeline
+    kb_snippets: str                          # 知识库检索结果文本
     session_id: str
     user_id: int
     turn_index: int
+    query_type: str                           # 新增：概括性/细节性/行动项/数据性/unknown
+    fallback_level: int                       # 新增：降级等级 0-3
 
 
 # Agent 封装
@@ -60,35 +61,30 @@ class ChatAgent:
     # =========================
     def _llm_call(self, state: dict):
         """
-        LLM 调用节点
-        
-        使用 context_builder 构建完整的上下文提示词：
-        - [Role & Policies]: 系统初始提示词
-        - [Task]: 用户当前问题
-        - [MEETING_CONTENT]: 从多个会议内容集合检索并重排序后的片段
-        - [Evidence]: 从多个知识库集合检索并重排序后的片段
-        - [Context]: 最近 3 轮对话 + 过往记忆
+        LLM 调用节点（重构版）
+
+        使用 context_builder.build_context() 构建 SystemMessage + HumanMessage 列表：
+        - SystemMessage: 角色定位 + 防泄漏指令 + 降级引导
+        - HumanMessage:  条件组装的用户上下文（会议/知识库/历史/问题）
         """
         question = state.get('question', '')
         session_id = state.get('session_id', '')
         user_id = state.get('user_id', 0)
-        
-        # 解析会议内容片段
-        meeting_content_list = []
-        meeting_content_str = state.get('meeting_content', '')
-        if meeting_content_str:
-            meeting_content_list = [s.strip() for s in meeting_content_str.split('\n') if s.strip()]
-        
-        # 解析知识库片段
-        kb_snippets_list = []
+        fallback_level = state.get('fallback_level', 0)
+
+        # 会议内容片段（已经是列表，直接使用）
+        meeting_content_list: list[str] = state.get('meeting_content', []) or []
+
+        # 知识库片段
+        kb_snippets_list: list[str] = []
         kb_snippets_str = state.get('kb_snippets', '')
         if kb_snippets_str:
             kb_snippets_list = [s.strip() for s in kb_snippets_str.split('\n') if s.strip()]
 
         # 获取最近 3 轮历史对话
         recent_history = get_recent_history(session_id)
-        
-        # 获取该会话的过往记忆（排除近 3 轮，避免与 SESSION_HISTORY 重复）
+
+        # 获取该会话的过往记忆（排除近 3 轮）
         past_memory = retrieve_past_memory(
             user_id=user_id,
             question=question,
@@ -97,22 +93,25 @@ class ChatAgent:
             current_turn_index=state.get('turn_index', 0),
         )
 
-        # 构建完整上下文提示词
-        full_prompt = build_context(
+        # 构建 SystemMessage + HumanMessage（返回值改为消息列表）
+        messages = build_context(
             question=question,
             meeting_content=meeting_content_list,
             kb_snippets=kb_snippets_list,
             recent_history=recent_history,
             past_memory=past_memory,
+            fallback_level=fallback_level,
         )
-        
-        logger.info(f"✅ 构建上下文完成，session_id={session_id}, user_id={user_id}")
 
-        # 使用 HumanMessage 直接构造，避免 ChatPromptTemplate 将 full_prompt 中的
-        # {xxx} 文本（如代码片段、日志格式等）误解析为模板变量
-        llm_message = self.model.invoke([HumanMessage(content=full_prompt)])
+        logger.info(
+            f"✅ 构建上下文完成, session_id={session_id}, "
+            f"user_id={user_id}, fallback_level={fallback_level}"
+        )
+
+        # 使用消息列表调用 LLM
+        llm_message = self.model.invoke(messages)
         logger.info("✅ 调用大模型完成")
-        
+
         return {
             "messages": [llm_message]
         }
@@ -127,7 +126,7 @@ class ChatAgent:
 
         builder.add_edge(START, "llm_call")
         builder.add_edge("llm_call", END)
-        
+
         graph = builder.compile()
         return graph
 
@@ -140,7 +139,17 @@ class ChatAgent:
     # =========================
     # 对外调用方法
     # =========================
-    async def stream_run(self, question: str, meeting_text: str, kb_text: str, session_id: str, user_id: int, turn_index: int = 0):
+    async def stream_run(
+        self,
+        question: str,
+        meeting_snippets: list[str],
+        kb_text: str,
+        session_id: str,
+        user_id: int,
+        turn_index: int = 0,
+        query_type: str = "unknown",
+        fallback_level: int = 0,
+    ):
         """
         流式执行对话工作流，逐 token 产出大模型回答。
         """
@@ -150,11 +159,13 @@ class ChatAgent:
                 {
                     "messages": [],
                     "question": question,
-                    "meeting_content": meeting_text,
+                    "meeting_content": meeting_snippets,
                     "kb_snippets": kb_text,
                     "session_id": session_id,
                     "user_id": user_id,
                     "turn_index": turn_index,
+                    "query_type": query_type,
+                    "fallback_level": fallback_level,
                 },
                 stream_mode="messages"
             ):
@@ -184,133 +195,61 @@ class ChatAgent:
 
 
 # =========================
-# 单例 & WebSocket 业务编排
+# 单例
 # =========================
 chat_agent = ChatAgent()
+retrieval_pipeline = RetrievalPipeline(top_k=5)
 
 # turn_index 管理已迁移到 context_builder._SESSION_TURN_COUNTERS
 # 通过 get_next_turn_index(session_id) 获取下一个轮次序号
 
 
-async def _search_and_rerank_meeting(
-    question: str,
-    task_ids: list[str],
-    top_k: int = 5
-) -> str:
+# ---------------------------------------------------------------------------
+# 私有辅助：四级降级判定
+# ---------------------------------------------------------------------------
+def _determine_fallback_level(
+    has_meeting: bool,
+    has_kb: bool,
+    has_history: bool,
+) -> tuple[int, str | None]:
     """
-    从多个会议内容集合搜索并统一重排序
-    
-    Args:
-        question: 用户问题
-        task_ids: 会议任务ID列表
-        top_k: 返回的 top k 条结果
-        
+    根据检索结果确定降级等级和用户提示语。
+
     Returns:
-        重排序后的会议内容，用换行符连接
+        (fallback_level, user_notice | None)
+        fallback_level: 0=完整, 1=部分, 2=仅历史, 3=仅提示词
+        user_notice: 需要告知用户的话（Level 0 时为 None）
     """
-    if not task_ids:
-        return ""
-    
-    # 从多个 meeting 集合收集文档
-    all_meeting_docs = []
-    for t_id in task_ids:
-        collection_name = f"collection_meeting_{t_id}"
-        try:
-            result = db_manager.search(
-                collection_name=collection_name,
-                query_text=question,
-                n_results=20
-            )
-            docs = (result.get("documents") or [[]])[0]
-            all_meeting_docs.extend([d for d in docs if d and isinstance(d, str) and d.strip()])
-        except Exception as e:
-            logger.warning(f"搜索会议集合 {collection_name} 失败: {e}")
-    
-    if not all_meeting_docs:
-        return ""
-    
-    # 统一重排序
-    try:
-        reranked = await rerank.rerank_context(question, [all_meeting_docs], top_k=top_k)
-        return "\n".join(reranked)
-    except Exception as e:
-        logger.error(f"会议内容重排序失败: {e}")
-        return "\n".join(all_meeting_docs[:top_k])
+    if has_meeting or has_kb:
+        if has_meeting and has_kb:
+            return 0, None  # Level 0: 完整
+        else:
+            return 1, None  # Level 1: 部分（有其中一个就够）
+    elif has_history:
+        return 2, "未检索到相关会议记录，以下基于已有对话为您作答："
+    else:
+        return 3, "当前没有会议记录可供查询，请先选择会议的录音或转录结果，我才能帮您分析。"
 
 
-async def _search_and_rerank_knowledge_base(
-    question: str,
-    knowledge_ids: list[str],
-    top_k: int = 5
-) -> str:
-    """
-    从多个知识库集合搜索并统一重排序
-    
-    Args:
-        question: 用户问题
-        knowledge_ids: 知识库ID列表
-        top_k: 返回的 top k 条结果
-        
-    Returns:
-        重排序后的知识库内容，用换行符连接
-    """
-    if not knowledge_ids:
-        return ""
-    
-    # 从多个 knowledge 集合收集文档
-    collection_docs = {}
-    for kb_id in knowledge_ids:
-        collection_name = f"collection_kb_{kb_id}"
-        try:
-            result = db_manager.search(
-                collection_name=collection_name,
-                query_text=question,
-                n_results=20
-            )
-            docs = (result.get("documents") or [[]])[0]
-            filtered = [d.strip() for d in docs if d and isinstance(d, str) and d.strip()]
-            if filtered:
-                collection_docs[collection_name] = filtered
-        except Exception as e:
-            logger.warning(f"搜索知识库集合 {collection_name} 失败: {e}")
-    
-    if not collection_docs:
-        return ""
-    
-    # 多集合统一重排序
-    try:
-        reranked, _ = await rerank.rerank_multi_collection(
-            question=question,
-            collection_docs=collection_docs,
-            top_k=top_k
-        )
-        reranked_text = [item.get('text') for item in reranked]
-        return "\n".join(reranked_text)
-    except Exception as e:
-        logger.error(f"知识库内容重排序失败: {e}")
-        # 失败时返回所有文档的前 top_k 条
-        all_docs = []
-        for docs in collection_docs.values():
-            all_docs.extend(docs)
-        return "\n".join(all_docs[:top_k])
-
-
+# ---------------------------------------------------------------------------
+# 核心编排：stream_chat_messages
+# ---------------------------------------------------------------------------
 async def stream_chat_messages(
     question: str,
     session_id: str,
     user_id: int = 0,
-    task_ids: list[str] | None = None,
+    meeting_ids: list[str] | None = None,
     need_kb: bool = False,
     knowledge_ids: list[str] | None = None
 ):
     """
     产出消息协议（与 WebSocket / SSE 共用）：
-        - {"status": "start",    "question": "..."}           开始生成
-        - {"status": "streaming", "text": "token 片段"}        逐 token 推送
-        - {"status": "done",      "text": "完整回答"}          生成完成
-        - {"status": "error",     "message": "错误信息"}        异常
+        - {"status": "start",    "question": "..."}            开始生成
+        - {"status": "streaming", "text": "token 片段"}         逐 token 推送
+        - {"status": "done",      "text": "完整回答"}           生成完成
+        - {"status": "error",     "message": "错误信息"}         异常
     """
-    task_ids = task_ids or []
+    meeting_ids = meeting_ids or []
     knowledge_ids = knowledge_ids or []
 
     # === 0. 将用户输入写入上下文（内存 + MySQL + Chroma） ===
@@ -324,45 +263,69 @@ async def stream_chat_messages(
         turn_index=user_turn_index,
     )
 
-    # === 1. 从多集合收集会议内容并重排序 ===
-    meeting_text = ""
-    if task_ids:
-        try:
-            meeting_text = await _search_and_rerank_meeting(question, task_ids, top_k=5)
-        except Exception as e:
-            logger.error("搜索会议内容失败", exc_info=True)
-            yield {"status": "error", "message": f"搜索会议内容失败: {e}"}
-            return
-
-    # === 2. 从多集合收集知识库内容并重排序 ===
+    # === 1. 使用 RetrievalPipeline 统一检索 ===
+    kb_ids_for_pipeline = knowledge_ids if need_kb else []
+    meeting_snippets: list[str] = []
     kb_text = ""
-    if need_kb and knowledge_ids:
-        try:
-            kb_text = await _search_and_rerank_knowledge_base(question, knowledge_ids, top_k=5)
-        except Exception as e:
-            logger.error("搜索知识库内容失败", exc_info=True)
-            yield {"status": "error", "message": f"搜索知识库内容失败: {e}"}
-            return
+    query_type = "unknown"
 
-    # 如果没有会议内容也没有知识库内容，返回提示
-    if not meeting_text and not kb_text:
-        yield {"status": "error", "message": "未找到相关会议内容或知识库片段"}
+    try:
+        retrieval_result = await retrieval_pipeline.retrieve(
+            question=question,
+            meeting_ids=meeting_ids,
+            knowledge_ids=kb_ids_for_pipeline,
+        )
+        meeting_snippets = retrieval_result.get("meeting", [])
+        kb_text = retrieval_result.get("kb", "")
+        query_type = retrieval_result.get("query_type", "unknown")
+    except Exception as e:
+        logger.error(f"[stream_chat_messages] 检索失败: {e}", exc_info=True)
+        yield {"status": "error", "message": f"检索失败: {e}"}
         return
+
+    # === 2. 四级降级判定 ===
+    has_meeting = len(meeting_snippets) > 0
+    has_kb = bool(kb_text)
+    has_history = bool(get_recent_history(session_id))
+
+    fallback_level, user_notice = _determine_fallback_level(
+        has_meeting=has_meeting,
+        has_kb=has_kb,
+        has_history=has_history,
+    )
+    logger.info(
+        f"[stream_chat_messages] 降级等级={fallback_level}, "
+        f"meeting={has_meeting}, kb={has_kb}, history={has_history}, "
+        f"query_type={query_type}"
+    )
 
     # === 3. 通知前端开始流式回答 ===
     yield {"status": "start", "question": question}
 
     # === 4. LangGraph 流式生成回答 ===
     full_answer_parts: list[str] = []
+
+    # 降级 Level 2/3 时，先输出用户提示语
+    if user_notice:
+        full_answer_parts.append(user_notice)
+        yield {"status": "streaming", "text": user_notice}
+
     try:
         async for chunk in chat_agent.stream_run(
-            question, meeting_text, kb_text, session_id=session_id, user_id=user_id, turn_index=user_turn_index
+            question=question,
+            meeting_snippets=meeting_snippets,
+            kb_text=kb_text,
+            session_id=session_id,
+            user_id=user_id,
+            turn_index=user_turn_index,
+            query_type=query_type,
+            fallback_level=fallback_level,
         ):
             full_answer_parts.append(chunk)
             yield {"status": "streaming", "text": chunk}
 
         full_answer = "".join(full_answer_parts)
-        
+
         # === 5. 将助手回答写入上下文 ===
         assistant_turn_index = get_next_turn_index(session_id)
         append_history(session_id, "assistant", full_answer)
@@ -373,7 +336,7 @@ async def stream_chat_messages(
             content=full_answer,
             turn_index=assistant_turn_index,
         )
-        
+
         yield {
             "status": "done",
             "text": full_answer
@@ -392,13 +355,13 @@ async def stream_chat_answer(
     question: str,
     session_id: str,
     user_id: int = 0,
-    task_ids: list[str] | None = None,
+    meeting_ids: list[str] | None = None,
     need_kb: bool = False,
     knowledge_ids: list[str] | None = None
 ):
     """
     WebSocket 对话业务编排 — 薄适配层。
-    
+
     将 stream_chat_answer 核心逻辑委托给 stream_chat_messages()，
     仅负责将消息通过 WebSocket 发送给前端。
     """
@@ -406,7 +369,7 @@ async def stream_chat_answer(
         question=question,
         session_id=session_id,
         user_id=user_id,
-        task_ids=task_ids,
+        meeting_ids=meeting_ids,
         need_kb=need_kb,
         knowledge_ids=knowledge_ids,
     ):

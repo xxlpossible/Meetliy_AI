@@ -1,5 +1,8 @@
 # task/tasks.py
 import os
+import re
+import uuid
+from typing import Any
 
 from langchain_core.documents import Document
 from loguru import logger
@@ -17,6 +20,47 @@ from utils.siliconflow_embedding import db_manager
 from utils.splitter import Splitter
 
 from .celery_app import celery_app
+
+
+# ---------------------------------------------------------------------------
+# 辅助函数：解析主题分段文本
+# ---------------------------------------------------------------------------
+def _parse_theme_segmentation(theme_text: str) -> list[dict[str, str]]:
+    """
+    将 MeetingAgent 生成的主题分段文本按【主题名称】边界解析为列表。
+
+    输入格式示例：
+        【产品发布计划】
+        讨论了Q3发布计划...
+        【预算评审】
+        张三提出预算需要...
+
+    输出：
+        [
+            {"theme": "产品发布计划", "content": "讨论了Q3发布计划..."},
+            {"theme": "预算评审", "content": "张三提出预算需要..."},
+        ]
+    """
+    if not theme_text or not theme_text.strip():
+        return []
+
+    # 按【】边界拆分
+    segments = re.split(r'(?=【)', theme_text.strip())
+    result: list[dict[str, str]] = []
+
+    for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+        # 提取主题名称：第一个【...】之间的内容
+        match = re.match(r'【(.+?)】\s*(.*)', seg, re.DOTALL)
+        if match:
+            theme_name = match.group(1).strip()
+            content = match.group(2).strip()
+            if theme_name and content:
+                result.append({"theme": theme_name, "content": content})
+
+    return result
 
 
 @celery_app.task
@@ -63,25 +107,84 @@ def transcription(
 
         if result.get('status') == 'complete':
             # 将识别结果转换为向量 并创建会议专用集合
-            # 集合命名为 collection_meeting_{t_id}，与知识库集合 collection_kb_{knowledge_id} 分开存储
-            collection_name = f"collection_meeting_{t_id}"
+            # 获取 meeting_id，用于集合命名和 metadata
+            meeting_id = meeting.id if meeting else None
+            # 集合命名为 collection_meeting_{meeting_id}
+            collection_name = f"collection_meeting_{meeting_id}"
             db_manager.get_or_create_collection(name=collection_name)
             logger.info(f"会议内容集合创建成功，集合名称：{collection_name}")
-            # 结果向量化
-            complete_text = result.get('complete_text', "")
-            sentences = result.get('sentences', [])
 
-            # 转录结果为纯文本（非 Markdown），不经过 MarkItDown 转换，
-            # 故使用通用递归分块（按标点符号切分），而非 Markdown 结构化分块
+            # —— 1. 细粒度分块（原有逻辑 + 增强 metadata） ——
+            complete_text = result.get('complete_text', "")
+            sentences = result.get('sentences', result.get('sentences_with_time', []))
+
+            # 转录结果为纯文本（非 Markdown），使用通用递归分块
             chunks = Splitter.split_documents([Document(page_content=complete_text)])
             chunk_page_contents = [chunk.page_content for chunk in chunks]
-            sentences.extend(chunk_page_contents)
 
-            logger.info("开始将会议内容存入集合")
-            db_manager.add_documents(
-                collection_name=collection_name,
-                documents=sentences
-            )
+            # 先存入带时间戳的原始句子（保持原逻辑不变，doc_type="sentence"）
+            if sentences:
+                db_manager.add_documents(
+                    collection_name=collection_name,
+                    documents=sentences,
+                )
+                logger.info(f"原始句子入库: {len(sentences)} 条")
+
+            # 再存入细粒度 chunk（带 chunk_index / meeting_id metadata）
+            if chunk_page_contents:
+                fine_metadatas: list[dict[str, Any]] = []
+                for i, _content in enumerate(chunk_page_contents):
+                    meta: dict[str, Any] = {"doc_type": "fine_chunk", "chunk_index": i}
+                    if meeting_id:
+                        meta["meeting_id"] = meeting_id
+                    fine_metadatas.append(meta)
+                db_manager.add_documents(
+                    collection_name=collection_name,
+                    documents=chunk_page_contents,
+                    metadatas=fine_metadatas,
+                    ids=[uuid.uuid4().hex for _ in chunk_page_contents],
+                )
+                logger.info(f"细粒度 chunk 入库: {len(chunk_page_contents)} 条 (doc_type=fine_chunk)")
+
+            # —— 2. 摘要级内容入库 ——
+            # 2.1 会议摘要
+            summary_text = result.get('summary', '')
+            if summary_text and summary_text.strip():
+                db_manager.add_documents(
+                    collection_name=collection_name,
+                    documents=[summary_text.strip()],
+                    metadatas=[{"doc_type": "summary"}],
+                    ids=[uuid.uuid4().hex],
+                )
+                logger.info("会议摘要入库 (doc_type=summary)")
+
+            # 2.2 行动项
+            action_text = result.get('action', '')
+            if action_text and action_text.strip():
+                db_manager.add_documents(
+                    collection_name=collection_name,
+                    documents=[action_text.strip()],
+                    metadatas=[{"doc_type": "action_items"}],
+                    ids=[uuid.uuid4().hex],
+                )
+                logger.info("行动项入库 (doc_type=action_items)")
+
+            # 2.3 主题分段（按【主题名称】拆分后逐段入库）
+            theme_text = result.get('theme_segmentation', '')
+            themes = _parse_theme_segmentation(theme_text)
+            if themes:
+                theme_docs: list[str] = []
+                theme_metas: list[dict[str, Any]] = []
+                for t in themes:
+                    theme_docs.append(t["content"])
+                    theme_metas.append({"doc_type": "theme_seg", "theme": t["theme"]})
+                db_manager.add_documents(
+                    collection_name=collection_name,
+                    documents=theme_docs,
+                    metadatas=theme_metas,
+                    ids=[uuid.uuid4().hex for _ in theme_docs],
+                )
+                logger.info(f"主题分段入库: {len(themes)} 个主题 (doc_type=theme_seg)")
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
         # 任务执行异常时，将 Transcription 和关联的 Meeting 都标为 ERROR

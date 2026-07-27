@@ -2,12 +2,11 @@
 上下文管理模块
 
 将一次对话所需的全部上下文按统一格式拼接为大模型输入提示词，组成来源包括：
-- 系统初始提示词（角色定位、职责）           —— [Role & Policies]
-- 当前任务（用户本轮提问）                   —— [Task]
-- 会议内容（从 Chroma meeting 集合检索）      —— [MEETING_CONTENT]
-- 知识库片段（从 Chroma knowledge 集合检索）  —— [Evidence]
-- 最近历史对话（内存中提取，仅保留近 3 轮）   —— [Context]
-- 过往记忆（从 Chroma 检索，排除近 3 轮）    —— [Context]
+- 系统初始提示词（角色定位、职责）           —— SystemMessage
+- 会议内容（从 Chroma meeting 集合检索）      —— HumanMessage（会议内容区块）
+- 知识库片段（从 Chroma knowledge 集合检索）  —— HumanMessage（知识库区块）
+- 最近历史对话（内存中提取，仅保留近 3 轮）   —— HumanMessage（历史对话区块）
+- 过往记忆（从 Chroma 检索，排除近 3 轮）    —— HumanMessage（历史对话区块）
 
 同时负责把会话中的每条聊天记录（单条输入或输出）同步写入 MySQL 与 Chroma 向量库，
 Chroma 的 metadata 中必须包含 session_id / user_id / time / role / turn_index 信息。
@@ -19,17 +18,30 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 from database.models.chatmessage import ChatMessage, ChatMessageDao
 from utils.siliconflow_embedding import db_manager
 
-# 系统初始提示词（角色定位、职责）—— 作为 [Role & Policies] 区块内容。
+# 系统初始提示词（角色定位、职责 + 防泄漏指令）—— 作为 SystemMessage 内容。
 SYSTEM_ROLE_PROMPT = (
     "你是一位专业的会议与知识库智能助理。"
-    "你的职责是基于提供的会议记录、知识库片段以及历史对话，准确、有据地回答用户的问题。"
+    "你的职责是基于提供的会议记录、知识库参考信息以及历史对话，准确、有据地回答用户的问题。"
     "回答应满足以下要求：1) 提供具体可行的建议；2) 解释技术原理；3) 必要时给出代码示例或结构化要点。"
-    "当上下文信息不足以回答问题时应明确说明，而不是编造内容。"
+    "当信息不足以回答问题时应明确说明，而不是编造内容。"
+)
+
+# 防泄漏与回答风格指令（补充在 SystemMessage 末尾，不在 HumanMessage 中暴露）
+_ANTI_LEAK_INSTRUCTIONS = (
+    "\n\n【重要——回答规范】\n"
+    "1. 严禁在回答中提及任何内部结构标签，包括但不限于：\"上下文结构\"、\"MEETING_CONTENT\"、"
+    "\"Evidence\"、\"Role & Policies\"、\"会议内容片段\"、\"知识库片段\"等。\n"
+    "2. 严禁说\"根据提供的会议内容\"、\"根据知识库片段\"、\"根据上下文\"等暴露检索过程的话。"
+    "你应该自然作答，让用户感觉你本就了解这些信息。\n"
+    "3. 当信息不足以回答问题时，应说\"根据我目前掌握的信息，暂时无法回答这个问题\"或"
+    "\"目前没有找到相关的会议记录\"，严禁说\"你没有给我有效的\"这类归咎于用户的话。\n"
+    "4. 回答风格应专业、直接、有据，避免冗长的前置说明。"
 )
 
 
@@ -264,7 +276,7 @@ def clear_session_history(session_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 上下文拼接
+# 上下文拼接（重构版：SystemMessage + HumanMessage 分离，自然语言区块）
 # ---------------------------------------------------------------------------
 def build_context(
     question: str,
@@ -272,59 +284,88 @@ def build_context(
     kb_snippets: list[str],
     recent_history: list[dict[str, str]],
     past_memory: list[str],
-) -> str:
+    fallback_level: int = 0,
+) -> list[SystemMessage | HumanMessage]:
     """
-    按统一格式拼接上下文提示词：
-    [Role & Policies]
-    （系统提示词）
+    将对话所需全部上下文按自然语言格式拼接，返回 LangChain 消息列表。
 
-    [Task]
-    （用户问题）
+    输出结构：
+        [SystemMessage]  — 角色定位 + 防泄漏指令
+        [HumanMessage]   — 条件组装的用户上下文（会议内容 / 知识库 / 历史对话 / 用户问题）
 
-    [MEETING_CONTENT]
-    （从会议内容集合检索到的片段）
+    各区块仅在有对应内容时才出现，避免暴露空占位符。
+    
+    Args:
+        question: 用户当前问题
+        meeting_content: 会议内容片段列表
+        kb_snippets: 知识库片段列表
+        recent_history: 最近 3 轮对话
+        past_memory: 过往记忆文本列表
+        fallback_level: 降级等级（0=完整, 1=部分, 2=仅历史, 3=仅提示词）
 
-    [Evidence]
-    （从知识库集合检索到的片段）
-
-    [Context]
-    （最近 3 轮对话 + 过往记忆）
-
-    [Output]
-    （输出要求）
+    Returns:
+        [SystemMessage, HumanMessage] 消息列表（可直接传给 model.invoke()）
     """
-    # MEETING_CONTENT：会议内容片段
+
+    # —— SystemMessage：角色 + 防泄漏指令 ——
+    system_text = SYSTEM_ROLE_PROMPT + _ANTI_LEAK_INSTRUCTIONS
+
+    # 根据降级等级调整 SystemMessage 中的引导语
+    if fallback_level == 2:
+        system_text += (
+            "\n\n当前未检索到相关会议记录，但有一些历史对话可供参考。"
+            "请基于历史对话和你的知识尽量帮助用户。如果确实无法回答，请礼貌说明。"
+        )
+    elif fallback_level == 3:
+        system_text += (
+            "\n\n当前没有会议记录可供查询，也没有历史对话。"
+            "请告知用户：当前没有会议记录可供查询，请先选择一个会议的录音或转录结果，我才能帮你分析。"
+        )
+
+    # —— HumanMessage：条件组装用户上下文 ——
+    human_parts: list[str] = []
+
+    # 会议内容区块
     if meeting_content:
-        meeting_block = "\n---\n".join(m for m in meeting_content if m)
-    else:
-        meeting_block = "（暂无相关会议内容）"
+        clean_meeting = "\n---\n".join(m for m in meeting_content if m)
+        human_parts.append(
+            "以下是本次会议的相关内容：\n"
+            "---\n"
+            f"{clean_meeting}\n"
+            "---"
+        )
 
-    # Evidence：知识库片段
+    # 知识库区块
     if kb_snippets:
-        evidence = "\n---\n".join(s for s in kb_snippets if s)
-    else:
-        evidence = "（暂无相关知识库片段）"
+        clean_kb = "\n---\n".join(s for s in kb_snippets if s)
+        human_parts.append(
+            "以下是相关知识库参考信息：\n"
+            "---\n"
+            f"{clean_kb}\n"
+            "---"
+        )
 
-    # Context：最近历史对话 + 过往记忆
-    context_parts: list[str] = []
+    # 历史对话区块（最近对话 + 过往记忆）
+    context_lines: list[str] = []
     for msg in recent_history:
-        role_label = "user" if msg.get("role") == "user" else "assistant"
-        context_parts.append(f"{role_label}: {msg.get('content', '')}")
+        role_label = "用户" if msg.get("role") == "user" else "助手"
+        context_lines.append(f"{role_label}: {msg.get('content', '')}")
     for mem in past_memory:
-        context_parts.append(f"记忆: {mem}")
-    context_block = "\n".join(context_parts) if context_parts else "（暂无历史对话）"
+        context_lines.append(f"记忆: {mem}")
+    if context_lines:
+        human_parts.append(
+            "以下是最近的对话记录：\n"
+            "---\n"
+            f"{chr(10).join(context_lines)}\n"
+            "---"
+        )
 
-    return (
-        "[Role & Policies]\n"
-        f"{SYSTEM_ROLE_PROMPT}\n\n"
-        "[Task]\n"
-        f"{question}\n\n"
-        "[MEETING_CONTENT]\n"
-        f"{meeting_block}\n\n"
-        "[Evidence]\n"
-        f"{evidence}\n\n"
-        "[Context]\n"
-        f"{context_block}\n\n"
-        "[Output]\n"
-        "请基于以上信息,提供准确、有据的回答。\n"
-    )
+    # 用户问题（始终出现在末尾）
+    human_parts.append(f"用户问题：{question}")
+
+    human_text = "\n\n".join(human_parts)
+
+    return [
+        SystemMessage(content=system_text),
+        HumanMessage(content=human_text),
+    ]

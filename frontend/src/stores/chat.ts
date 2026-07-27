@@ -43,13 +43,13 @@ export const useChatStore = defineStore('chat', () => {
   const optionsLoading = ref(false)
 
   // ===== 已选项（新建/修改讨论范围）=====
-  const selectedTaskIds = ref<string[]>([])
+  const selectedMeetingIds = ref<string[]>([])
   const selectedKnowledgeIds = ref<string[]>([])
   const needKb = ref(false)
 
   // ===== 计算属性 =====
   const currentSessionId = computed(() => currentSession.value?.session_id || null)
-  const hasSelection = computed(() => selectedTaskIds.value.length > 0 || selectedKnowledgeIds.value.length > 0 || needKb.value)
+  const hasSelection = computed(() => selectedMeetingIds.value.length > 0 || selectedKnowledgeIds.value.length > 0 || needKb.value)
 
   // ===== Actions: 会话列表 =====
 
@@ -160,11 +160,11 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 切换会议选择 */
   function toggleMeeting(taskId: string): void {
-    const idx = selectedTaskIds.value.indexOf(taskId)
+    const idx = selectedMeetingIds.value.indexOf(taskId)
     if (idx === -1) {
-      selectedTaskIds.value.push(taskId)
+      selectedMeetingIds.value.push(taskId)
     } else {
-      selectedTaskIds.value.splice(idx, 1)
+      selectedMeetingIds.value.splice(idx, 1)
     }
   }
 
@@ -180,14 +180,14 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 从会话信息恢复已选项 */
   function restoreSelectionFromSession(session: ChatSession): void {
-    selectedTaskIds.value = [...(session.task_ids || [])]
+    selectedMeetingIds.value = [...(session.meeting_ids || [])]
     selectedKnowledgeIds.value = [...(session.knowledge_ids || [])]
     needKb.value = session.need_kb || false
   }
 
   /** 清除选择 */
   function clearSelection(): void {
-    selectedTaskIds.value = []
+    selectedMeetingIds.value = []
     selectedKnowledgeIds.value = []
     needKb.value = false
   }
@@ -195,11 +195,11 @@ export const useChatStore = defineStore('chat', () => {
   // ===== Actions: 会话 CRUD =====
 
   /** 创建新会话（本地预创建，WS 连接后在首次发消息时激活） */
-  function createLocalSession(sessionId: string, taskIds: string[] = [], knowledgeIds: string[] = [], needKb: boolean = false): void {
+  function createLocalSession(sessionId: string, meetingIds: string[] = [], knowledgeIds: string[] = [], needKb: boolean = false): void {
     const newSession: ChatSession = {
       session_id: sessionId,
       session_name: null,
-      task_ids: [...taskIds],
+      meeting_ids: [...meetingIds],
       knowledge_ids: [...knowledgeIds],
       need_kb: needKb,
       user_id: 0,
@@ -223,17 +223,17 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /** 同步修改到后端 */
-  async function syncSessionContext(sessionId: string, taskIds: string[], knowledgeIds: string[]): Promise<void> {
-    await chatApi.updateSession(sessionId, undefined, taskIds, knowledgeIds, needKb.value)
+  async function syncSessionContext(sessionId: string, meetingIds: string[], knowledgeIds: string[]): Promise<void> {
+    await chatApi.updateSession(sessionId, undefined, meetingIds, knowledgeIds, needKb.value)
     // 更新本地状态
     const session = sessionList.value.find(s => s.session_id === sessionId)
     if (session) {
-      session.task_ids = taskIds
+      session.meeting_ids = meetingIds
       session.knowledge_ids = knowledgeIds
       session.need_kb = needKb.value
     }
     if (currentSession.value?.session_id === sessionId) {
-      currentSession.value.task_ids = taskIds
+      currentSession.value.meeting_ids = meetingIds
       currentSession.value.knowledge_ids = knowledgeIds
       currentSession.value.need_kb = needKb.value
     }
@@ -315,7 +315,7 @@ export const useChatStore = defineStore('chat', () => {
     meetingSearch,
     knowledgeSearch,
     optionsLoading,
-    selectedTaskIds,
+    selectedMeetingIds,
     selectedKnowledgeIds,
     needKb,
 

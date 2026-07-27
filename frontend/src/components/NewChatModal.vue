@@ -16,7 +16,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'start', data: { sessionId: string; taskIds: string[]; knowledgeIds: string[]; needKb: boolean }): void
+  (e: 'start', data: { sessionId: string; meetingIds: string[]; knowledgeIds: string[]; needKb: boolean }): void
 }>()
 
 const chatStore = useChatStore()
@@ -31,7 +31,7 @@ const knowledgePage = ref(1)
 const pageSize = 5
 
 // ===== 计算属性 =====
-const selectedMeetingCount = computed(() => chatStore.selectedTaskIds.length)
+const selectedMeetingCount = computed(() => chatStore.selectedMeetingIds.length)
 const selectedKbCount = computed(() => chatStore.selectedKnowledgeIds.length)
 const canStart = computed(() => selectedMeetingCount.value > 0 || selectedKbCount.value > 0)
 
@@ -74,7 +74,7 @@ function handleKnowledgePageChange(page: number) {
 // ===== 选择操作 =====
 
 function isMeetingSelected(meeting: MeetingItem): boolean {
-  return chatStore.selectedTaskIds.includes(meeting.id)
+  return chatStore.selectedMeetingIds.includes(meeting.id)
 }
 
 function isKnowledgeSelected(kb: KnowledgeItem): boolean {
@@ -99,7 +99,7 @@ function handleStart() {
   if (!canStart.value) return
   emit('start', {
     sessionId: generateSessionId(),
-    taskIds: [...chatStore.selectedTaskIds],
+    meetingIds: [...chatStore.selectedMeetingIds],
     knowledgeIds: [...chatStore.selectedKnowledgeIds],
     needKb: chatStore.needKb,
   })

@@ -210,7 +210,7 @@ export interface UploadFileData {
 export interface ChatSession {
   session_id: string
   session_name: string | null
-  task_ids: string[]
+  meeting_ids: string[]
   knowledge_ids: string[]
   need_kb: boolean
   user_id: number

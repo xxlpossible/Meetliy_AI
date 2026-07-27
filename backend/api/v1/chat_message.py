@@ -116,13 +116,13 @@ async def chat_stream(
     首次收到消息时，如果 session 不存在则自动创建 ChatSession 记录。
     
     参数：
-    - task_ids: 多个会议任务ID，用逗号分隔（如 "id1,id2,id3"），对应会议内容集合 collection_meeting_{id}
+    - task_ids: 多个会议ID，用逗号分隔（如 "id1,id2,id3"），对应会议内容集合 collection_meeting_{meeting_id}
     - need_kb: 是否需要查询知识库
     - knowledge_ids: 知识库ID列表，用逗号分隔（如 "kb1,kb2"），对应知识库集合 collection_kb_{id}
     - token: 认证 token
     
     集合命名规则：
-    - 会议内容：collection_meeting_{task_id}
+    - 会议内容：collection_meeting_{meeting_id}
     - 知识库：collection_kb_{knowledge_id}
     - 记忆：chat_memory_{user_id}
     """
@@ -183,7 +183,7 @@ async def chat_stream(
                         session_id=session_id,
                         session_name=session_name,
                         user_id=user_id,
-                        task_ids=task_id_list,
+                        meeting_ids=task_id_list,
                         knowledge_ids=knowledge_id_list,
                         need_kb=need_kb,
                     ))
@@ -194,7 +194,7 @@ async def chat_stream(
                 await stream_chat_answer(
                     websocket, str(question).strip(), 
                     session_id=session_id, user_id=user_id,
-                    task_ids=task_id_list,
+                    meeting_ids=task_id_list,
                     need_kb=need_kb,
                     knowledge_ids=knowledge_id_list
                 )
@@ -225,7 +225,7 @@ async def chat_sse(
     - event: done      data: {"text": "完整回答"}
     - event: error     data: {"message": "错误信息", "partial": "..."}
     """
-    task_ids = body.task_ids or []
+    meeting_ids = body.meeting_ids or []
     knowledge_ids = body.knowledge_ids or []
     user_id = current_user.id
     
@@ -237,7 +237,7 @@ async def chat_sse(
             session_id=body.session_id,
             session_name=session_name,
             user_id=user_id,
-            task_ids=task_ids,
+            meeting_ids=meeting_ids,
             knowledge_ids=knowledge_ids,
             need_kb=body.need_kb,
         ))
@@ -249,7 +249,7 @@ async def chat_sse(
             question=body.question,
             session_id=body.session_id,
             user_id=user_id,
-            task_ids=task_ids,
+            meeting_ids=meeting_ids,
             need_kb=body.need_kb,
             knowledge_ids=knowledge_ids,
         ):
