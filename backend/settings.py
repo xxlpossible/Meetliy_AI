@@ -18,8 +18,9 @@ _SECTION_META: dict[str, tuple] = {
     'minio_config':       ('',             ['MINIO_ENDPOINT', 'MINIO_ACCESS_KEY', 'MINIO_SECRET_KEY']),
     'dashscope':          ('DASHSCOPE',    ['api_key', 'workspace_id', 'base_url']),
     'rerank':             ('RERANK',       ['model', 'base_url', 'api_key']),
-    'qwen':               ('QWEN',         ['model', 'base_url', 'api_key']),
-    'embeddings':         ('EMBEDDINGS',   ['model', 'base_url', 'api_key']),
+    'chat_model':         ('CHAT_MODEL',    ['model', 'base_url', 'api_key']),
+    'rewrite_model':      ('REWRITE_MODEL', ['model', 'base_url', 'api_key']),
+    'embeddings':         ('EMBEDDINGS',    ['model', 'base_url', 'api_key']),
 }
 
 
@@ -106,9 +107,13 @@ class Settings(BaseSettings):
         prefix, fields = _SECTION_META['rerank']
         return self._merge_env(self._get_section('rerank'), prefix, fields)
 
-    def get_qwen_config(self):
-        prefix, fields = _SECTION_META['qwen']
-        return self._merge_env(self._get_section('qwen'), prefix, fields)
+    def get_chat_model_config(self):
+        prefix, fields = _SECTION_META['chat_model']
+        return self._merge_env(self._get_section('chat_model'), prefix, fields)
+
+    def get_rewrite_model_config(self):
+        prefix, fields = _SECTION_META['rewrite_model']
+        return self._merge_env(self._get_section('rewrite_model'), prefix, fields)
 
     def get_embeddings_config(self):
         prefix, fields = _SECTION_META['embeddings']

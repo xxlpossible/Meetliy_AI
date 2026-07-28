@@ -91,14 +91,18 @@ class QueryOptimizer:
     """查询优化器：LLM 分类+改写（主）+ 关键词规则（兜底）。"""
 
     def __init__(self):
-        qwen = settings.get_qwen_config()
+        rewrite_model = settings.get_rewrite_model_config()
         self._model = init_chat_model(
-            model=qwen.get('model', "qwen3.5-flash"),
+            model=rewrite_model.get('model', "Qwen/Qwen2.5-7B-Instruct"),
             model_provider="openai",
-            api_key=qwen.get('api_key', None),
-            base_url=qwen.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            api_key=rewrite_model.get('api_key', None),
+            base_url=rewrite_model.get('base_url', "https://api.siliconflow.cn/v1"),
+            temperature=0.1,
+            top_p=0.8,
+            enable_thinking=false,
+            stream=false
         )
-        self._llm_timeout: float = 30.0  # LLM 调用超时（秒），分类+改写需要足够的推理时间
+        self._llm_timeout: float = 15.0  # LLM 调用超时（秒），分类+改写需要足够的推理时间
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -189,6 +193,14 @@ class QueryOptimizer:
             json_text = self._extract_json(content)
 
             parsed: dict = json.loads(json_text)
+
+            # DEBUG: 打印 LLM 原始输出和解析结果，方便排查改写模型行为
+            logger.debug(
+                f"[QueryOptimizer] LLM 原始输出 (前800字符): {content[:800]}\n"
+                f"  JSON 提取结果: {json_text[:400]}\n"
+                f"  解析字段: query_type={parsed.get('query_type')!r}, "
+                f"queries={parsed.get('rewritten_queries')!r}"
+            )
 
         except json.JSONDecodeError as e:
             logger.error(

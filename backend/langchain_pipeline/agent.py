@@ -30,12 +30,12 @@ class MessagesState(TypedDict):
 class MeetingAgent:
 
     def __init__(self):
-        qwen = settings.get_qwen_config()
+        chat_model = settings.get_chat_model_config()
         self.model = init_chat_model(
-            model=qwen.get('model', "qwen3.5-flash"),
+            model=chat_model.get('model', "qwen3.5-flash"),
             model_provider="openai",
-            api_key=qwen.get('api_key', None),
-            base_url=qwen.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1")
+            api_key=chat_model.get('api_key', None),
+            base_url=chat_model.get('base_url', "https://dashscope.aliyuncs.com/compatible-mode/v1")
         )
         self.tools = [self._build_asr_tool()]
         self.tools_by_name = {t.name: t for t in self.tools}

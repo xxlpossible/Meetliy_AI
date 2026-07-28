@@ -10,13 +10,13 @@ class LLMService:
     """封装大语言模型调用逻辑（支持流式输出）"""
 
     def __init__(self):
-        qwen = settings.get_qwen_config()
+        chat_model = settings.get_chat_model_config()
         # 初始化异步客户端
         self.async_client = AsyncOpenAI(
-            api_key=qwen.get('api_key'),
-            base_url=qwen.get('base_url')
+            api_key=chat_model.get('api_key'),
+            base_url=chat_model.get('base_url')
         )
-        self.model_name = qwen.get('model')
+        self.model_name = chat_model.get('model')
 
     async def stream_answer(self, context: str, question: str, chat_history: list[str] | None = None):
         """
