@@ -143,72 +143,65 @@ class RetrievalPipeline:
 
         if query_type == "概括性":
             # 摘要优先：用所有改写查询分别检索 summary + theme_seg
-            seen: set[str] = set()
             for q in query_list:
-                await self._retrieve_by_doc_types(
+                await self._retrieve(
                     meeting_ids=meeting_ids,
                     query_text=q,
-                    doc_types=["summary", "theme_seg"],
-                    n_results=10,
+                    n_res_per_collection=10,
                     doc_list=all_meeting_docs,
                     meta_list=all_meeting_metas,
+                    doc_types=["summary", "theme_seg"],
                 )
             # 结果不足 → 全量检索兜底（同样遍历所有改写查询）
             if len(all_meeting_docs) < self.top_k * 3:
                 for q in query_list:
-                    await self._retrieve_all(
+                    await self._retrieve(
                         meeting_ids=meeting_ids,
                         query_text=q,
-                        n_results=15,
+                        n_res_per_collection=15,
                         doc_list=all_meeting_docs,
                         meta_list=all_meeting_metas,
                     )
 
         elif query_type == "细节性":
             # 多查询融合
-            seen: set[str] = set()
             for q in query_list:
-                for m_id in meeting_ids:
-                    collection_name = f"collection_meeting_{m_id}"
-                    await self._search_and_collect(
-                        collection_name=collection_name,
-                        query_text=q,
-                        n_results=10,
-                        doc_list=all_meeting_docs,
-                        meta_list=all_meeting_metas,
-                        seen=seen,
-                    )
+                await self._retrieve(
+                    meeting_ids=meeting_ids,
+                    query_text=q,
+                    n_res_per_collection=10,
+                    doc_list=all_meeting_docs,
+                    meta_list=all_meeting_metas,
+                )
 
         elif query_type == "行动项":
             # 定向检索 action_items
-            await self._retrieve_by_doc_types(
+            await self._retrieve(
                 meeting_ids=meeting_ids,
                 query_text=question,
-                doc_types=["action_items"],
-                n_results=5,
+                n_res_per_collection=5,
                 doc_list=all_meeting_docs,
                 meta_list=all_meeting_metas,
+                doc_types=["action_items"],
             )
             # 兜底：全量检索
             if len(all_meeting_docs) < self.top_k:
-                await self._retrieve_all(
+                await self._retrieve(
                     meeting_ids=meeting_ids,
                     query_text=question,
-                    n_results=10,
+                    n_res_per_collection=10,
                     doc_list=all_meeting_docs,
                     meta_list=all_meeting_metas,
                 )
 
         else:  # 数据性 / unknown
-            for m_id in meeting_ids:
-                await self._search_and_collect(
-                    collection_name=f"collection_meeting_{m_id}",
-                    query_text=query_list[0] if query_list else question,
-                    n_results=20,
-                    doc_list=all_meeting_docs,
-                    meta_list=all_meeting_metas,
-                    seen=set(),
-                )
+            await self._retrieve(
+                meeting_ids=meeting_ids,
+                query_text=query_list[0] if query_list else question,
+                n_res_per_collection=20,
+                doc_list=all_meeting_docs,
+                meta_list=all_meeting_metas,
+            )
 
         # Step 3: 相邻扩展（对 fine_chunk 类型文档）
         if all_meeting_docs and meeting_ids:
@@ -260,76 +253,56 @@ class RetrievalPipeline:
     # 内部检索辅助方法
     # ------------------------------------------------------------------
     @staticmethod
-    async def _search_and_collect(
-        collection_name: str,
-        query_text: str,
-        n_results: int,
-        doc_list: list[str],
-        meta_list: list[dict],
-        seen: set[str],
-    ) -> None:
-        """执行单次向量检索并收集结果（去重）。"""
-        try:
-            result = db_manager.search(
-                collection_name=collection_name,
-                query_text=query_text,
-                n_results=n_results,
-            )
-            docs = (result.get("documents") or [[]])[0]
-            metas = (result.get("metadatas") or [[]])[0]
-            for doc, meta in zip(docs, metas):
-                if doc and isinstance(doc, str) and doc.strip() and doc.strip() not in seen:
-                    seen.add(doc.strip())
-                    doc_list.append(doc.strip())
-                    meta_list.append(meta if meta else {})
-        except Exception as e:
-            logger.warning(f"[RetrievalPipeline] 搜索 {collection_name} 失败: {e}")
-
-    @staticmethod
-    async def _retrieve_by_doc_types(
+    async def _retrieve(
         meeting_ids: list[str],
         query_text: str,
-        doc_types: list[str],
-        n_results: int,
+        n_res_per_collection: int,
         doc_list: list[str],
         meta_list: list[dict],
+        doc_types: list[str] | None = None,
+        score_threshold: float = 0.6,
     ) -> None:
-        """按 doc_type 过滤检索。"""
+        """统一检索：遍历所有会议集合，支持可选的 doc_type 过滤和分数过滤，带去重。
+
+        Args:
+            meeting_ids: 会议 ID 列表
+            query_text: 查询文本
+            n_res_per_collection: 每个集合返回的结果数
+            doc_list: 结果文档列表（原地追加）
+            meta_list: 结果元数据列表（原地追加）
+            doc_types: 可选，按 doc_type 过滤；为 None 则不限制类型
+            score_threshold: 相似度阈值 [0, 1]，低于此分数的结果会被丢弃，默认 0.6
+        """
+        seen: set[str] = set()
+        where = {"doc_type": {"$in": doc_types}} if doc_types else None
+        max_distance = 1.0 - score_threshold  # ChromaDB cosine distances: 越小越相似
+
         for m_id in meeting_ids:
             try:
-                result = db_manager.search(
-                    collection_name=f"collection_meeting_{m_id}",
-                    query_text=query_text,
-                    n_results=n_results,
-                    where={"doc_type": {"$in": doc_types}},
-                )
+                kwargs: dict = {
+                    "collection_name": f"collection_meeting_{m_id}",
+                    "query_text": query_text,
+                    "n_results": n_res_per_collection,
+                }
+                if where:
+                    kwargs["where"] = where
+
+                result = db_manager.search(**kwargs)
                 docs = (result.get("documents") or [[]])[0]
                 metas = (result.get("metadatas") or [[]])[0]
-                for doc, meta in zip(docs, metas):
-                    if doc and isinstance(doc, str) and doc.strip():
+                distances = (result.get("distances") or [[]])[0]
+                for doc, meta, dist in zip(docs, metas, distances):
+                    if dist > max_distance:
+                        continue
+                    if doc and isinstance(doc, str) and doc.strip() and doc.strip() not in seen:
+                        seen.add(doc.strip())
                         doc_list.append(doc.strip())
                         meta_list.append(meta if meta else {})
             except Exception as e:
                 logger.warning(
-                    f"[RetrievalPipeline] doc_type 检索失败 "
+                    f"[RetrievalPipeline] 检索失败 "
                     f"(collection_meeting_{m_id}, types={doc_types}): {e}"
                 )
-
-    @staticmethod
-    async def _retrieve_all(
-        meeting_ids: list[str],
-        query_text: str,
-        n_results: int,
-        doc_list: list[str],
-        meta_list: list[dict],
-    ) -> None:
-        """全量检索（无 doc_type 过滤）。"""
-        seen: set[str] = set()
-        for m_id in meeting_ids:
-            await RetrievalPipeline._search_and_collect(
-                f"collection_meeting_{m_id}",
-                query_text, n_results, doc_list, meta_list, seen,
-            )
 
     @staticmethod
     async def _search_kb(question: str, knowledge_ids: list[str], top_k: int = 5) -> str:

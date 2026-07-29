@@ -25,7 +25,7 @@ from database.schemas.schema import (
     UserQA,
     UserTempQA,
 )
-from service.llm_graph_service import stream_chat_answer, stream_chat_messages
+from service.llm_graph_service import stream_chat_messages
 from service.llm_service import llm_service
 from utils.dependencies import get_current_user
 from utils.security import TOKEN_TYPE_ACCESS, decode_token
@@ -60,157 +60,6 @@ def _generate_session_name(question: str) -> str:
     if len(cleaned) <= max_len:
         return cleaned
     return cleaned[:max_len] + "…"
-
-
-# 该接口已经弃用，使用下面的WebSocket接口进行AI对话
-@router.post('/question', summary="用户提问")
-async def user_qa(body: UserQA, current_user: User = Depends(get_current_user)):
-    task_id = body.task_id
-    question = body.question
-    collection_name = f"collection_{task_id}"
-    history = body.history
-
-    async def stream_response():
-        """生成流式响应"""
-        try:
-            from service.rerank import rerank
-            from utils.siliconflow_embedding import db_manager
-            search_result = db_manager.search(
-                collection_name=collection_name,
-                query_text=question,
-                n_results=40
-            )
-        except Exception as e:
-            yield json.dumps({"error": f"ChromaDB 查询失败: {e}"}) + "\n"
-            return
-
-        context_docs = search_result.get("documents", [[]])
-        reranked_docs = await rerank.rerank_context(question, context_docs, top_k=10)
-        texts = [item['text'] for item in reranked_docs]
-        context_text = "\n".join(texts) if texts else ""
-
-        if not context_text.strip():
-            yield json.dumps({"error": "未找到相关会议内容"}) + "\n"
-            return
-
-        async for chunk in llm_service.stream_answer(context_text, question, chat_history=history):
-            yield chunk
-
-    generator = stream_response()
-    return StreamingResponse(generator, media_type="text/event-stream")
-
-
-@router.websocket("/ws/chat")
-async def chat_stream(
-    websocket: WebSocket,
-    session_id: str,
-    task_ids: str | None = Query(None),
-    need_kb: bool | None = Query(False),
-    knowledge_ids: str | None = Query(None),
-    token: str | None = Query(None)
-):
-    """
-    WebSocket 聊天接口。
-    
-    每次调用代表开启一个新会话（由前端传入 session_id）。
-    首次收到消息时，如果 session 不存在则自动创建 ChatSession 记录。
-    
-    参数：
-    - task_ids: 多个会议ID，用逗号分隔（如 "id1,id2,id3"），对应会议内容集合 collection_meeting_{meeting_id}
-    - need_kb: 是否需要查询知识库
-    - knowledge_ids: 知识库ID列表，用逗号分隔（如 "kb1,kb2"），对应知识库集合 collection_kb_{id}
-    - token: 认证 token
-    
-    集合命名规则：
-    - 会议内容：collection_meeting_{meeting_id}
-    - 知识库：collection_kb_{knowledge_id}
-    - 记忆：chat_memory_{user_id}
-    """
-    # === 第一步：Token 认证 ===
-    if not token:
-        await websocket.accept()
-        await websocket.close(code=4401)
-        logger.warning("🔒 WebSocket 连接因未提供 Token 被拒绝")
-        return
-    try:
-        payload = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
-    except HTTPException:
-        await websocket.accept()
-        await websocket.close(code=4401)
-        logger.warning("🔒 WebSocket 连接因 Token 无效或过期被拒绝")
-        return
-    
-    user_id = payload.get("user_id")
-    
-    # 解析 task_ids 和 knowledge_ids
-    task_id_list = [t.strip() for t in task_ids.split(",") if t.strip()] if task_ids else []
-    knowledge_id_list = [k.strip() for k in knowledge_ids.split(",") if k.strip()] if knowledge_ids else []
-
-    # === 第二步：接受连接 ===
-    await websocket.accept()
-    client_info = f"{websocket.client.host}:{websocket.client.port}"
-    logger.info(f"🎧 WebSocket 连接已建立（客户端: {client_info}，session_id: {session_id}，task_ids: {task_id_list}，need_kb: {need_kb}，knowledge_ids: {knowledge_id_list}）")
-
-    # === 第三步：设置超时和消息循环 ===
-    session_created = False
-    try:
-        while True:
-            try:
-                data = await asyncio.wait_for(
-                    websocket.receive_json(),
-                    timeout=300
-                )
-            except TimeoutError:
-                logger.info(f"⏰ WebSocket 连接超时（{300} 秒无消息），自动关闭")
-                await websocket.close(code=4000)
-                break
-
-            if isinstance(data, dict) and data.get("type") == "close":
-                logger.info("👋 收到客户端主动关闭请求")
-                break
-
-            question = data.get('text') if isinstance(data, dict) else None
-            if not question or not str(question).strip():
-                await websocket.send_json({"status": "error", "message": "问题不能为空"})
-                continue
-
-            # 首次收到有效消息时，自动创建 Session
-            if not session_created:
-                existing = ChatSessionDao.get_by_session_id(session_id=session_id)
-                if existing is None:
-                    session_name = _generate_session_name(str(question).strip())
-                    ChatSessionDao.add(ChatSession(
-                        session_id=session_id,
-                        session_name=session_name,
-                        user_id=user_id,
-                        meeting_ids=task_id_list,
-                        knowledge_ids=knowledge_id_list,
-                        need_kb=need_kb,
-                    ))
-                    logger.info(f"🎯 自动创建会话: session_id={session_id}, name={session_name}")
-                session_created = True
-
-            try:
-                await stream_chat_answer(
-                    websocket, str(question).strip(), 
-                    session_id=session_id, user_id=user_id,
-                    meeting_ids=task_id_list,
-                    need_kb=need_kb,
-                    knowledge_ids=knowledge_id_list
-                )
-            except WebSocketDisconnect:
-                raise
-            except Exception as e:
-                logger.error("❌ 处理用户问题失败", exc_info=True)
-                await websocket.send_json({"status": "error", "message": f"处理失败: {e}"})
-
-    except WebSocketDisconnect:
-        logger.info("❎ WebSocket 客户端主动断开连接")
-    except Exception:
-        logger.error("❌ WebSocket 异常", exc_info=True)
-    finally:
-        await websocket.close()
-        logger.info("🧹 WebSocket 连接已清理关闭")
 
 
 @router.post('/sse/chat', summary="SSE 流式聊天")
@@ -353,3 +202,116 @@ async def delete_message(chat_id: int, current_user: User = Depends(get_current_
     if not deleted:
         raise HTTPException(status_code=403, detail="无权操作或未查询到该聊天")
     return resp_200(message="删除成功")
+
+
+# @router.websocket("/ws/chat")
+# async def chat_stream(
+#     websocket: WebSocket,
+#     session_id: str,
+#     task_ids: str | None = Query(None),
+#     need_kb: bool | None = Query(False),
+#     knowledge_ids: str | None = Query(None),
+#     token: str | None = Query(None)
+# ):
+#     """
+#     WebSocket 聊天接口。
+    
+#     每次调用代表开启一个新会话（由前端传入 session_id）。
+#     首次收到消息时，如果 session 不存在则自动创建 ChatSession 记录。
+    
+#     参数：
+#     - task_ids: 多个会议ID，用逗号分隔（如 "id1,id2,id3"），对应会议内容集合 collection_meeting_{meeting_id}
+#     - need_kb: 是否需要查询知识库
+#     - knowledge_ids: 知识库ID列表，用逗号分隔（如 "kb1,kb2"），对应知识库集合 collection_kb_{id}
+#     - token: 认证 token
+    
+#     集合命名规则：
+#     - 会议内容：collection_meeting_{meeting_id}
+#     - 知识库：collection_kb_{knowledge_id}
+#     - 记忆：chat_memory_{user_id}
+#     """
+#     # === 第一步：Token 认证 ===
+#     if not token:
+#         await websocket.accept()
+#         await websocket.close(code=4401)
+#         logger.warning("🔒 WebSocket 连接因未提供 Token 被拒绝")
+#         return
+#     try:
+#         payload = decode_token(token, expected_type=TOKEN_TYPE_ACCESS)
+#     except HTTPException:
+#         await websocket.accept()
+#         await websocket.close(code=4401)
+#         logger.warning("🔒 WebSocket 连接因 Token 无效或过期被拒绝")
+#         return
+    
+#     user_id = payload.get("user_id")
+    
+#     # 解析 task_ids 和 knowledge_ids
+#     task_id_list = [t.strip() for t in task_ids.split(",") if t.strip()] if task_ids else []
+#     knowledge_id_list = [k.strip() for k in knowledge_ids.split(",") if k.strip()] if knowledge_ids else []
+
+#     # === 第二步：接受连接 ===
+#     await websocket.accept()
+#     client_info = f"{websocket.client.host}:{websocket.client.port}"
+#     logger.info(f"🎧 WebSocket 连接已建立（客户端: {client_info}，session_id: {session_id}，task_ids: {task_id_list}，need_kb: {need_kb}，knowledge_ids: {knowledge_id_list}）")
+
+#     # === 第三步：设置超时和消息循环 ===
+#     session_created = False
+#     try:
+#         while True:
+#             try:
+#                 data = await asyncio.wait_for(
+#                     websocket.receive_json(),
+#                     timeout=300
+#                 )
+#             except TimeoutError:
+#                 logger.info(f"⏰ WebSocket 连接超时（{300} 秒无消息），自动关闭")
+#                 await websocket.close(code=4000)
+#                 break
+
+#             if isinstance(data, dict) and data.get("type") == "close":
+#                 logger.info("👋 收到客户端主动关闭请求")
+#                 break
+
+#             question = data.get('text') if isinstance(data, dict) else None
+#             if not question or not str(question).strip():
+#                 await websocket.send_json({"status": "error", "message": "问题不能为空"})
+#                 continue
+
+#             # 首次收到有效消息时，自动创建 Session
+#             if not session_created:
+#                 existing = ChatSessionDao.get_by_session_id(session_id=session_id)
+#                 if existing is None:
+#                     session_name = _generate_session_name(str(question).strip())
+#                     ChatSessionDao.add(ChatSession(
+#                         session_id=session_id,
+#                         session_name=session_name,
+#                         user_id=user_id,
+#                         meeting_ids=task_id_list,
+#                         knowledge_ids=knowledge_id_list,
+#                         need_kb=need_kb,
+#                     ))
+#                     logger.info(f"🎯 自动创建会话: session_id={session_id}, name={session_name}")
+#                 session_created = True
+
+#             try:
+#                 await stream_chat_answer(
+#                     websocket, str(question).strip(), 
+#                     session_id=session_id, user_id=user_id,
+#                     meeting_ids=task_id_list,
+#                     need_kb=need_kb,
+#                     knowledge_ids=knowledge_id_list
+#                 )
+#             except WebSocketDisconnect:
+#                 raise
+#             except Exception as e:
+#                 logger.error("❌ 处理用户问题失败", exc_info=True)
+#                 await websocket.send_json({"status": "error", "message": f"处理失败: {e}"})
+
+#     except WebSocketDisconnect:
+#         logger.info("❎ WebSocket 客户端主动断开连接")
+#     except Exception:
+#         logger.error("❌ WebSocket 异常", exc_info=True)
+#     finally:
+#         await websocket.close()
+#         logger.info("🧹 WebSocket 连接已清理关闭")

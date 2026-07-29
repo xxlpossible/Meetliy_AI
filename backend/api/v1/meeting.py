@@ -369,7 +369,6 @@ async def upload_file(
     tmp_path = os.path.join(tempfile.gettempdir(), temp_filename)
 
     logger.info(f"⬇️ 接口调用成功，开始接收上传语音文件: {audio_file.filename}")
-    logger.info(f"📁 临时文件路径: {tmp_path}")
 
     try:
         # Step 1. 异步写入临时文件
@@ -377,7 +376,7 @@ async def upload_file(
             while chunk := await audio_file.read(8192):
                 await f.write(chunk)
 
-        logger.info(f"✅ 文件已保存到临时路径: {tmp_path}")
+        logger.info(f"✅ 文件已保存到本地临时路径: {tmp_path}")
 
         # Step 2. 根据临时文件的保存路径 获取公网的文件地址 public_url
         public_url = TmpFilesUploader.upload_from_temp_path(temp_path=tmp_path)
@@ -405,7 +404,7 @@ async def upload_file(
             task_id=t_id,
             need_summary=True,
         ))
-        logger.info(f"上传语音文件，创建 Meeting 记录: id={meeting_id} task_id={t_id}")
+        logger.info(f"已同步创建 Meeting 与 Transcription 对象: meeting_id={meeting_id} task_id={t_id}")
 
         # Step 3. 将公网的地址传入工作流 交给AI执行任务
         transcription.delay(public_url, t_id)
@@ -477,7 +476,7 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
     # 2. 校验会议存在且进行中
     meeting = MeetingDao.get_by_id(m_id=meeting_id, user_id=user_id)
     if not meeting:
-        # 用户不在 user_ids 中，尝试自动加入（主持人创建时已含，此处兜底）
+        # [判断用户是否加入过会议] 用户不在 user_ids 中，说明是第一次进入会议，尝试自动加入
         meeting = MeetingDao.get_by_id(m_id=meeting_id)
         if not meeting:
             await websocket.close(code=4404)

@@ -63,131 +63,137 @@ def _parse_theme_segmentation(theme_text: str) -> list[dict[str, str]]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# 辅助函数：会议内容向量入库
+# ---------------------------------------------------------------------------
+def _store_meeting_vectors(
+    result: dict[str, Any],
+    meeting_id: str | None,
+    sentences: list[str],
+) -> None:
+    """将会议转录结果（句子/分块/摘要/行动项/主题）写入向量数据库。"""
+    collection_name = f"collection_meeting_{meeting_id}"
+    db_manager.get_or_create_collection(name=collection_name)
+    logger.info(f"会议内容向量集合创建成功，集合名称：{collection_name}")
+
+    # —— 1. 细粒度内容 ——
+    complete_text = result.get('complete_text', "")
+    chunks = Splitter.split_documents([Document(page_content=complete_text)])
+    chunk_page_contents = [chunk.page_content for chunk in chunks]
+
+    # 1.1 带时间戳的原始句子
+    if sentences:
+        prefixed_sentences = [f"[带时间戳的会议记录]{s}" for s in sentences]
+        db_manager.add_documents(
+            collection_name=collection_name,
+            documents=prefixed_sentences,
+            metadatas=[{"doc_type": "sentence"} for _ in sentences],
+            ids=[uuid.uuid4().hex for _ in sentences],
+        )
+        logger.info(f"sentence入库: {len(sentences)} 条")
+
+    # 1.2 会议原文 chunk
+    if chunk_page_contents:
+        fine_metadatas: list[dict[str, Any]] = []
+        for i in range(len(chunk_page_contents)):
+            meta: dict[str, Any] = {"doc_type": "fine_chunk", "chunk_index": i}
+            if meeting_id:
+                meta["meeting_id"] = meeting_id
+            fine_metadatas.append(meta)
+        db_manager.add_documents(
+            collection_name=collection_name,
+            documents=chunk_page_contents,
+            metadatas=fine_metadatas,
+            ids=[uuid.uuid4().hex for _ in chunk_page_contents],
+        )
+        logger.info(f"会议原文 chunk 入库: {len(chunk_page_contents)} 条 (doc_type=fine_chunk)")
+
+    # —— 2. 摘要级内容 ——
+    # 2.1 会议摘要
+    summary_text = result.get('summary', '')
+    if summary_text and summary_text.strip():
+        db_manager.add_documents(
+            collection_name=collection_name,
+            documents=[f"[会议总结 Summary]{summary_text.strip()}"],
+            metadatas=[{"doc_type": "summary"}],
+            ids=[uuid.uuid4().hex],
+        )
+        logger.info("会议摘要入库 (doc_type=summary)")
+
+    # 2.2 行动项
+    action_text = result.get('action', '')
+    if action_text and action_text.strip():
+        db_manager.add_documents(
+            collection_name=collection_name,
+            documents=[f"[会议待办事项、行动项 Action Items]{action_text.strip()}"],
+            metadatas=[{"doc_type": "action_items"}],
+            ids=[uuid.uuid4().hex],
+        )
+        logger.info("待办事项、行动项入库 (doc_type=action_items)")
+
+    # 2.3 主题分段
+    themes = _parse_theme_segmentation(result.get('theme_segmentation', ''))
+    if themes:
+        theme_docs: list[str] = []
+        theme_metas: list[dict[str, Any]] = []
+        for t in themes:
+            theme_docs.append(t["content"])
+            theme_metas.append({"doc_type": "theme_seg", "theme": t["theme"]})
+        db_manager.add_documents(
+            collection_name=collection_name,
+            documents=theme_docs,
+            metadatas=theme_metas,
+            ids=[uuid.uuid4().hex for _ in theme_docs],
+        )
+        logger.info(f"主题分段入库: {len(themes)} 个主题 (doc_type=theme_seg)")
+
+
 @celery_app.task
 def transcription(
         public_url: str | None = None,
         t_id: str | None = None
 ):
     """语音转录后台任务"""
+    from database.models.meeting import MeetingDao, MeetingStatus
+    logger.info("START 后台任务开始")
+
     try:
-        # 取得对应任务
         task = TranscriptionDao.get_by_id(t_id=t_id)
 
-        # 这里是新的工作流的执行结果
         agent = MeetingAgent()
-        logger.info("Agent工作流开始执行")
         result = agent.run(public_url=public_url)
-        if result.get('status') == 'complete':
-            logger.info("后台任务执行成功")
+
+        # 更新转录任务 Transcription 状态
+        is_complete = result.get('status') == 'complete'
+        if is_complete:
+            logger.info("会议解析Agent执行成功")
             task.status = Status.COMPLETE.value
             task.task_result = result
-        elif result.get('status') == 'complete_with_errors':
-            logger.error(f"后台任务执行失败，执行过程出错，报错信息：{result.get('error_message', 'ERROR')}")
+        else:
+            logger.error(f"会议解析Agent执行失败，报错信息：{result.get('error_message', 'ERROR')}")
             task.status = Status.ERROR.value
-
-        # 对数据库进行更新
         TranscriptionDao.update(task)
 
-        # 转录任务完成后，同步更新关联的 Meeting 状态
-        from database.models.meeting import MeetingDao, MeetingStatus
+        # 同步更新关联的 Meeting 状态
         meeting = MeetingDao.get_by_task_id(t_id)
         if meeting:
-            if result.get('status') == 'complete':
-                MeetingDao.update_status(meeting.id, MeetingStatus.FINISH.value)
-                logger.info(f"会议 {meeting.id} 转录完成，状态更新为 FINISH")
-            elif result.get('status') == 'complete_with_errors':
-                MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
-                logger.error(f"会议 {meeting.id} 转录异常，状态更新为 ERROR")
-            else:
-                # 未知状态也标为 ERROR
-                MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
-                logger.error(f"会议 {meeting.id} 转录返回未知状态，状态更新为 ERROR")
+            new_status = MeetingStatus.FINISH.value if is_complete else MeetingStatus.ERROR.value
+            MeetingDao.update_status(meeting.id, new_status)
+            logger.info(f"会议 {meeting.id} 状态更新为 {'FINISH' if is_complete else 'ERROR'}")
         else:
-            logger.warning(f"task_id={t_id} 未找到关联的 Meeting 记录，跳过状态更新")
+            logger.warning(f"根据 task_id={t_id} 未找到关联的 Meeting 记录，跳过状态更新")
 
-        if result.get('status') == 'complete':
-            # 将识别结果转换为向量 并创建会议专用集合
-            # 获取 meeting_id，用于集合命名和 metadata
+        # 会议解析Agent成功后，将会议内容存入向量库
+        if is_complete:
             meeting_id = meeting.id if meeting else None
-            # 集合命名为 collection_meeting_{meeting_id}
-            collection_name = f"collection_meeting_{meeting_id}"
-            db_manager.get_or_create_collection(name=collection_name)
-            logger.info(f"会议内容集合创建成功，集合名称：{collection_name}")
+            if task.realtime_asr_text is None or len(task.realtime_asr_text) == 0:
+                sentences = result.get("sentences_with_time", [])
+            else:
+                sentences = task.realtime_asr_text
+            _store_meeting_vectors(result, meeting_id, sentences)
 
-            # —— 1. 细粒度分块（原有逻辑 + 增强 metadata） ——
-            complete_text = result.get('complete_text', "")
-            sentences = result.get('sentences', result.get('sentences_with_time', []))
-
-            # 转录结果为纯文本（非 Markdown），使用通用递归分块
-            chunks = Splitter.split_documents([Document(page_content=complete_text)])
-            chunk_page_contents = [chunk.page_content for chunk in chunks]
-
-            # 先存入带时间戳的原始句子（保持原逻辑不变，doc_type="sentence"）
-            if sentences:
-                db_manager.add_documents(
-                    collection_name=collection_name,
-                    documents=sentences,
-                )
-                logger.info(f"sentence入库: {len(sentences)} 条")
-
-            # 再存入细粒度 chunk（带 chunk_index / meeting_id metadata）
-            if chunk_page_contents:
-                fine_metadatas: list[dict[str, Any]] = []
-                for i, _content in enumerate(chunk_page_contents):
-                    meta: dict[str, Any] = {"doc_type": "fine_chunk", "chunk_index": i}
-                    if meeting_id:
-                        meta["meeting_id"] = meeting_id
-                    fine_metadatas.append(meta)
-                db_manager.add_documents(
-                    collection_name=collection_name,
-                    documents=chunk_page_contents,
-                    metadatas=fine_metadatas,
-                    ids=[uuid.uuid4().hex for _ in chunk_page_contents],
-                )
-                logger.info(f"细粒度 chunk 入库: {len(chunk_page_contents)} 条 (doc_type=fine_chunk)")
-
-            # —— 2. 摘要级内容入库 ——
-            # 2.1 会议摘要
-            summary_text = result.get('summary', '')
-            if summary_text and summary_text.strip():
-                db_manager.add_documents(
-                    collection_name=collection_name,
-                    documents=[summary_text.strip()],
-                    metadatas=[{"doc_type": "summary"}],
-                    ids=[uuid.uuid4().hex],
-                )
-                logger.info("会议摘要入库 (doc_type=summary)")
-
-            # 2.2 行动项
-            action_text = result.get('action', '')
-            if action_text and action_text.strip():
-                db_manager.add_documents(
-                    collection_name=collection_name,
-                    documents=[action_text.strip()],
-                    metadatas=[{"doc_type": "action_items"}],
-                    ids=[uuid.uuid4().hex],
-                )
-                logger.info("行动项入库 (doc_type=action_items)")
-
-            # 2.3 主题分段（按【主题名称】拆分后逐段入库）
-            theme_text = result.get('theme_segmentation', '')
-            themes = _parse_theme_segmentation(theme_text)
-            if themes:
-                theme_docs: list[str] = []
-                theme_metas: list[dict[str, Any]] = []
-                for t in themes:
-                    theme_docs.append(t["content"])
-                    theme_metas.append({"doc_type": "theme_seg", "theme": t["theme"]})
-                db_manager.add_documents(
-                    collection_name=collection_name,
-                    documents=theme_docs,
-                    metadatas=theme_metas,
-                    ids=[uuid.uuid4().hex for _ in theme_docs],
-                )
-                logger.info(f"主题分段入库: {len(themes)} 个主题 (doc_type=theme_seg)")
     except Exception as e:
         logger.error(f"后台任务执行过程发生错误，请检查：{e}")
-        # 任务执行异常时，将 Transcription 和关联的 Meeting 都标为 ERROR
         try:
             task = TranscriptionDao.get_by_id(t_id=t_id)
             if task:
@@ -199,7 +205,9 @@ def transcription(
                 MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)
                 logger.info(f"会议 {meeting.id} 转录任务异常，状态更新为 ERROR")
         except Exception as update_err:
-            logger.error(f"更新失败状态时出错: {update_err}")
+            logger.error(f"更新 Transcription 和 Meeting 为失败状态时出错: {update_err}")
+    finally:
+        logger.info("FINISH 后台任务结束")
 
 
 @celery_app.task

@@ -17,7 +17,7 @@ class TmpFilesUploader:
 
     @staticmethod
     def upload_from_temp_path(temp_path: str):
-        logger.info("⬆️ 正在上传到OSS ...")
+        logger.info("⬆️ 正在上传到阿里云OSS ...")
         file_id = uuid.uuid4().hex
         # 将文件上传到 OSS
         oss_client.upload_file(key=f"audio/{file_id}.mp3", file_path=temp_path)

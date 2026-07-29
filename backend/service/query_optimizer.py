@@ -99,8 +99,7 @@ class QueryOptimizer:
             base_url=rewrite_model.get('base_url', "https://api.siliconflow.cn/v1"),
             temperature=0.1,
             top_p=0.8,
-            enable_thinking=false,
-            stream=false
+            model_kwargs={"enable_thinking": False},
         )
         self._llm_timeout: float = 15.0  # LLM 调用超时（秒），分类+改写需要足够的推理时间
 

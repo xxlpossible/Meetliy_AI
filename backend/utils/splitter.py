@@ -64,7 +64,6 @@ class Splitter:
             length_function=len,
         )
         chunks = text_splitter.split_documents(documents)
-        logger.info(f"[Splitter] 通用分块完成: {len(documents)} 篇 -> {len(chunks)} 块")
         return chunks
 
     @classmethod

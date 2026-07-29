@@ -20,6 +20,7 @@ _SECTION_META: dict[str, tuple] = {
     'rerank':             ('RERANK',       ['model', 'base_url', 'api_key']),
     'chat_model':         ('CHAT_MODEL',    ['model', 'base_url', 'api_key']),
     'rewrite_model':      ('REWRITE_MODEL', ['model', 'base_url', 'api_key']),
+    'router_model':       ('ROUTER_MODEL',  ['model', 'base_url', 'api_key']),
     'embeddings':         ('EMBEDDINGS',    ['model', 'base_url', 'api_key']),
 }
 
@@ -114,6 +115,10 @@ class Settings(BaseSettings):
     def get_rewrite_model_config(self):
         prefix, fields = _SECTION_META['rewrite_model']
         return self._merge_env(self._get_section('rewrite_model'), prefix, fields)
+
+    def get_router_model_config(self):
+        prefix, fields = _SECTION_META['router_model']
+        return self._merge_env(self._get_section('router_model'), prefix, fields)
 
     def get_embeddings_config(self):
         prefix, fields = _SECTION_META['embeddings']

@@ -158,7 +158,6 @@ export function useChatSSE() {
         chatStore.appendAiText(msg.text || '')
         break
       case 'done':
-        chatStore.appendAiText(msg.text || '')
         chatStore.finishAiMessage()
         break
       case 'error':

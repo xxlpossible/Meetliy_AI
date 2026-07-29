@@ -39,7 +39,7 @@ class SiliconFlowEmbeddingTool:
             # 提取向量并保持顺序
             return [item['embedding'] for item in data['data']]
         except Exception as e:
-            print(f"获取 Embedding 失败: {e}")
+            logger.error(f"调用 SiliconFlowEmbedding 获取 Embedding 失败: {e}")
             raise
 
 
@@ -97,7 +97,6 @@ class ChromaDBManager:
             ids = [str(uuid.uuid4()) for _ in documents]
 
         # 1. 先通过硅基流动工具类获取向量
-        logger.info(f"正在为 {len(documents)} 条文档生成向量...")
         embeddings = self.embedding_tool.get_embeddings(documents)
 
         collection = self.get_or_create_collection(collection_name)
@@ -109,7 +108,7 @@ class ChromaDBManager:
             documents=documents,
             metadatas=metadatas
         )
-        logger.info(f"成功存入 {len(documents)} 条文档")
+        logger.info(f"成功往向量库中存入 {len(documents)} 条文档")
 
     def search(
         self,
