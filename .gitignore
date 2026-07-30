@@ -30,7 +30,7 @@ htmlcov/
 backend/data/
 # ChromaDB 向量库运行时数据（含 test 目录下测试生成的实例）
 **/chroma_db/
-backend/sql/
+backend/database/migrations/
 backend/checkpoints.db
 backend/*.db
 backend/*.sqlite3
