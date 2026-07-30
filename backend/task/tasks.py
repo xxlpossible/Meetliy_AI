@@ -7,17 +7,17 @@ from typing import Any
 from langchain_core.documents import Document
 from loguru import logger
 
-from database.models.knowledge_file import (
+from core.database.models.knowledge_file import (
     FileState,
     KnowledgeFileDao,
     KnowledgeType,
 )
-from database.models.transcription import Status, TranscriptionDao
-from langchain_pipeline.agent import MeetingAgent
+from core.database.models.transcription import Status, TranscriptionDao
+from agent.meeting.agent import MeetingAgent
 from utils.file_loader import FileLoader
-from utils.markitdown_converter import get_knowledge_type
-from utils.siliconflow_embedding import db_manager
-from utils.splitter import Splitter
+from services.document_service import get_knowledge_type
+from rag.embedding import db_manager
+from rag.splitter import Splitter
 
 from .celery_app import celery_app
 
@@ -154,7 +154,7 @@ def transcription(
         t_id: str | None = None
 ):
     """语音转录后台任务"""
-    from database.models.meeting import MeetingDao, MeetingStatus
+    from core.database.models.meeting import MeetingDao, MeetingStatus
     logger.info("START 后台任务开始")
 
     try:
@@ -199,7 +199,7 @@ def transcription(
             if task:
                 task.status = Status.ERROR.value
                 TranscriptionDao.update(task)
-            from database.models.meeting import MeetingDao, MeetingStatus
+            from core.database.models.meeting import MeetingDao, MeetingStatus
             meeting = MeetingDao.get_by_task_id(t_id)
             if meeting:
                 MeetingDao.update_status(meeting.id, MeetingStatus.ERROR.value)

@@ -18,7 +18,7 @@ import os
 from langchain_core.documents import Document
 from loguru import logger
 
-from utils.markitdown_converter import (
+from services.document_service import (
     convert_to_markdown,
     get_knowledge_type,
     is_supported,
@@ -65,12 +65,12 @@ class FileLoader:
         ktype = get_knowledge_type(file_path)
         if ktype == 1:
             # 语音：调用硅基流动 SenseVoiceSmall 转录（不走 MarkItDown）
-            from utils.siliconflow_media_parser import transcribe_audio
+            from services.media_parser import transcribe_audio
             logger.info(f"[FileLoader] 语音转录开始: {file_path} (type={file_type})")
             text = transcribe_audio(file_path)
         elif ktype == 2:
             # 图片：调用硅基流动 deepseek-ai/DeepSeek-OCR（不走 MarkItDown）
-            from utils.siliconflow_media_parser import ocr_image
+            from services.media_parser import ocr_image
             logger.info(f"[FileLoader] 图片 OCR 开始: {file_path} (type={file_type})")
             text = ocr_image(file_path)
         else:

@@ -52,12 +52,13 @@ export const meetingApi = {
    * 我的会议列表（分页）
    * 后端 POST /meeting/list，参数包在 body 中
    */
-  async list(pageNum = 1, pageSize = 6, meetingName?: string): Promise<MeetingListData> {
+  async list(pageNum = 1, pageSize = 6, meetingName?: string, status?: number): Promise<MeetingListData> {
     const body: Record<string, any> = {
       page_num: pageNum,
       page_size: pageSize,
     }
     if (meetingName) body.meeting_name = meetingName
+    if (status !== undefined) body.status = status
     const resp = await request.post<ApiResponse<MeetingListData>>('/meeting/list', body)
     if (resp.data.status_code === 200) return resp.data.data
     throw new Error(resp.data.status_message)

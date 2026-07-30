@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { chatApi, knowledgeApi, meetingApi } from '@/api'
 import type { ChatSession, ChatMessageItem, KnowledgeItem, MeetingItem } from '@/api/types'
+import { MeetingStatus } from '@/api/types'
 
 export interface ChatMessage {
   chat_id?: number
@@ -112,8 +113,8 @@ export const useChatStore = defineStore('chat', () => {
     meetingPage.value = page
     meetingSearch.value = search
     try {
-      // 调用后端分页接口 POST /meeting/list
-      const data = await meetingApi.list(page, 5)
+      // 调用后端分页接口 POST /meeting/list，只拉取「解析完成」的会议
+      const data = await meetingApi.list(page, 5, undefined, MeetingStatus.FINISH)
       let items = data.data || []
       // 前端搜索过滤
       if (search) {

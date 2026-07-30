@@ -32,8 +32,8 @@ class Settings(BaseSettings):
 
     @staticmethod
     def get_all_config():
-        from cache.redis import redis_client
-        from database.models.config import ConfigDao
+        from core.cache.redis import redis_client
+        from core.database.models.config import ConfigDao
         redis_key = 'config:initdb_config'
         cache = redis_client.get(redis_key)
         if cache:

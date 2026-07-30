@@ -330,11 +330,18 @@ onMounted(async () => {
             :class="msg.role"
           >
             <div class="msg-content">
+              <!-- AI 消息：Markdown 渲染，流式时附带闪烁光标 -->
               <div
+                v-if="msg.role === 'assistant'"
                 class="msg-bubble"
-                v-html="msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content"
+                :class="{ streaming: msg.streaming }"
+                v-html="renderMarkdown(msg.content)"
               />
-              <span v-if="msg.streaming" class="streaming-cursor" />
+              <!-- 用户消息：纯文本 -->
+              <div
+                v-else
+                class="msg-bubble"
+              >{{ msg.content }}</div>
               <div class="msg-meta">{{ msg.timestamp }}</div>
             </div>
           </div>
@@ -930,15 +937,31 @@ onMounted(async () => {
   }
 }
 
-// 流式输出光标
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  background: var(--color-amber-500);
-  margin-left: 2px;
-  animation: blink 0.8s infinite;
-  vertical-align: middle;
+// 流式输出光标：作为气泡内最后一个子元素的 ::after 伪元素，
+// 始终跟随最后一个字符，流式结束后伴随 .streaming 类一起移除
+.msg-bubble.streaming {
+  > :last-child::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--color-amber-500);
+    margin-left: 2px;
+    animation: blink 0.8s infinite;
+    vertical-align: text-bottom;
+  }
+
+  // 流式刚开始、内容为空时，气泡本身承载光标
+  &:empty::after {
+    content: '';
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--color-amber-500);
+    margin-left: 0;
+    animation: blink 0.8s infinite;
+    vertical-align: text-bottom;
+  }
 }
 
 @keyframes blink {
