@@ -14,7 +14,8 @@ import { MeetingStatus } from '@/api/types'
 const router = useRouter()
 
 // ---- 状态 ----
-const loading = ref(false)
+const loading = ref(false)     // 首次加载（无数据时的全屏骨架）
+const isFetching = ref(false)  // 翻页/搜索中的数据请求（不遮挡现有内容）
 const meetingList = ref<MeetingItem[]>([])
 const meetingStatusMap = reactive<Map<string, MeetingStatusItem>>(new Map())
 const activeFilter = ref('all') // all | active | analyzing | finish | error
@@ -92,9 +93,17 @@ function getStatusInfo(
 
 // ---- 数据加载 ----
 async function loadData() {
-  loading.value = true
+  // 首次加载：显示骨架屏；翻页/搜索：仅显示顶部加载条，保留旧数据
+  if (meetingList.value.length === 0) {
+    loading.value = true
+  } else {
+    isFetching.value = true
+  }
+
   try {
     const listData = await meetingApi.list(currentPage.value, pageSize.value, searchKeyword.value || undefined)
+
+    // 先赋值列表，确保 refreshStatuses 读取的是新 ID
     meetingList.value = listData.data
     totalCount.value = listData.total
 
@@ -104,12 +113,13 @@ async function loadData() {
       await refreshStatuses(meetingIds)
     }
 
-    // 用后端统计接口刷新仪表盘，替代前端基于列表的自行统计（避免只看当前分页）
+    // 用后端统计接口刷新仪表盘
     await loadStatistics()
   } catch (e: any) {
     ElMessage.error(e.message || '加载失败，请稍后重试')
   } finally {
     loading.value = false
+    isFetching.value = false
     // 启动/停止轮询
     togglePolling()
   }
@@ -330,7 +340,10 @@ onUnmounted(stopPolling)
       </div>
 
       <!-- ========== 会议列表 ========== -->
-      <div v-loading="loading" class="meeting-list">
+      <div class="meeting-list">
+        <!-- 顶部加载条（翻页/搜索时显示，不遮挡内容） -->
+        <div v-if="isFetching" class="fetching-bar"></div>
+
         <div class="section-header">
           <div class="title-row">
             <h2 class="section-title">最近会议</h2>
@@ -388,7 +401,7 @@ onUnmounted(stopPolling)
           </div>
         </div>
 
-        <!-- 加载骨架 -->
+        <!-- 加载骨架（仅首次加载、列表为空时显示） -->
         <div v-if="loading" class="meeting-grid">
           <el-skeleton v-for="i in 4" :key="i" :rows="3" animated class="meeting-card-skeleton" />
         </div>
@@ -684,6 +697,25 @@ onUnmounted(stopPolling)
 // ---- 列表区 ----
 .meeting-list {
   min-height: 300px;
+  position: relative;
+}
+
+// 翻页/搜索加载条（顶部细条不遮挡内容）
+.fetching-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-amber-400), transparent);
+  border-radius: 0 0 2px 2px;
+  z-index: 10;
+  animation: fetchingSlide 0.8s ease-in-out infinite;
+}
+
+@keyframes fetchingSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .section-header {

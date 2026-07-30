@@ -5,10 +5,11 @@
 // ============================================================
 
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import NewChatModal from '@/components/NewChatModal.vue'
 import EditContextModal from '@/components/EditContextModal.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatSSE } from '@/composables/useChatSSE'
 import { renderMarkdown } from '@/utils/markdown'
@@ -52,19 +53,25 @@ async function selectSession(session: ChatSession) {
   await chatStore.loadHistory(session.session_id)
 }
 
-async function handleDeleteSession(sessionId: string) {
+// ===== 删除会话 =====
+const showDeleteConfirmDialog = ref(false)
+const deleteTargetSessionId = ref('')
+const deleteTargetSessionName = ref('')
+
+function handleDeleteSession(sessionId: string, sessionName?: string) {
+  deleteTargetSessionId.value = sessionId
+  deleteTargetSessionName.value = sessionName || '新会话'
+  showDeleteConfirmDialog.value = true
+}
+
+async function confirmDeleteSession() {
+  const sessionId = deleteTargetSessionId.value
+  showDeleteConfirmDialog.value = false
   try {
-    await ElMessageBox.confirm('确定要删除这个会话吗？', '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
     await chatStore.deleteSession(sessionId)
     ElMessage.success('会话已删除')
   } catch (e: any) {
-    if (e !== 'cancel') {
-      // 用户取消
-    }
+    ElMessage.error(e.message || '删除失败')
   }
 }
 
@@ -224,7 +231,7 @@ onMounted(async () => {
               </div>
               <button
                 class="chat-item-delete"
-                @click.stop="handleDeleteSession(session.session_id)"
+                @click.stop="handleDeleteSession(session.session_id, session.session_name)"
                 title="删除会话"
               >
                 ×
@@ -387,6 +394,19 @@ onMounted(async () => {
       :session="currentSession"
       @close="showEditContextModal = false"
       @save="handleEditContextSaved"
+    />
+
+    <!-- 删除会话确认弹窗 -->
+    <ConfirmDialog
+      :visible="showDeleteConfirmDialog"
+      title="删除会话"
+      :message="`确定要删除会话「${deleteTargetSessionName}」吗？`"
+      :highlight-text="deleteTargetSessionName"
+      confirm-text="删除"
+      cancel-text="取消"
+      type="danger"
+      @close="showDeleteConfirmDialog = false"
+      @confirm="confirmDeleteSession"
     />
   </DefaultLayout>
 </template>

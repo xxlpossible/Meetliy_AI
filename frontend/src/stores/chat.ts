@@ -40,7 +40,8 @@ export const useChatStore = defineStore('chat', () => {
   const knowledgeTotal = ref(0)
   const meetingSearch = ref('')
   const knowledgeSearch = ref('')
-  const optionsLoading = ref(false)
+  const meetingsLoading = ref(false)
+  const knowledgeLoading = ref(false)
 
   // ===== 已选项（新建/修改讨论范围）=====
   const selectedMeetingIds = ref<string[]>([])
@@ -107,7 +108,7 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 加载可用会议列表（分页） */
   async function loadAvailableMeetings(page = 1, search = ''): Promise<void> {
-    optionsLoading.value = true
+    meetingsLoading.value = true
     meetingPage.value = page
     meetingSearch.value = search
     try {
@@ -126,13 +127,13 @@ export const useChatStore = defineStore('chat', () => {
       meetingTotal.value = 0
       console.error('[ChatStore] 加载会议列表失败:', error)
     } finally {
-      optionsLoading.value = false
+      meetingsLoading.value = false
     }
   }
 
   /** 加载可用知识库列表 */
   async function loadAvailableKnowledge(page = 1, search = ''): Promise<void> {
-    optionsLoading.value = true
+    knowledgeLoading.value = true
     knowledgePage.value = page
     knowledgeSearch.value = search
     try {
@@ -144,7 +145,7 @@ export const useChatStore = defineStore('chat', () => {
       knowledgeTotal.value = 0
       console.error('[ChatStore] 加载知识库列表失败:', error)
     } finally {
-      optionsLoading.value = false
+      knowledgeLoading.value = false
     }
   }
 
@@ -314,7 +315,8 @@ export const useChatStore = defineStore('chat', () => {
     knowledgeTotal,
     meetingSearch,
     knowledgeSearch,
-    optionsLoading,
+    meetingsLoading,
+    knowledgeLoading,
     selectedMeetingIds,
     selectedKnowledgeIds,
     needKb,

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // ============================================================
 // MeetingRoomView — 实时会议室
-// 功能：麦克风采集 → WS 实时转写 / AI 临时对话 / 结束&离开
+// 功能：麦克风采集 → WS 实时转写 / 视频停靠区 / 结束&离开
 // ============================================================
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useMeetingStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { meetingApi } from '@/api'
@@ -13,7 +13,7 @@ import { getAccessToken } from '@/api/request'
 import { useAudioCapture } from '@/composables/useAudioCapture'
 import { useMeetingWebSocket } from '@/composables/useMeetingWebSocket'
 import { useWebRTC } from '@/composables/useWebRTC'
-import { useTempChat } from '@/composables/useTempChat'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { Participant } from '@/api/types'
 
 const route = useRoute()
@@ -47,31 +47,22 @@ interface TranscriptEntry {
 const finalTranscripts = reactive<TranscriptEntry[]>([])
 const interimTranscripts = reactive<Map<number, TranscriptEntry>>(new Map())
 
-// ---- AI 对话 ----
-interface ChatMsg {
-  role: 'user' | 'assistant'
-  content: string
-  time: string
+// ---- 视频停靠区 ----
+interface DockedVideo {
+  userId: number
+  userName: string
+  stream: MediaStream | null
+  minimizedAt: string
 }
 
-const chatMessages = reactive<ChatMsg[]>([
-  {
-    role: 'assistant',
-    content:
-      '你好！我是会议 AI 助手。你可以随时问我关于会议内容的问题，比如：\n\n• 总结当前讨论要点\n• 提取行动项\n• 解释某个术语或上下文',
-    time: '',
-  },
-])
-chatMessages[0].time = formatTime(new Date())
+const dockedVideos = reactive<DockedVideo[]>([])
 
-const chatInput = ref('')
 const sidebarCollapsed = ref(false)
 
 // ---- Composables ----
 const { start: startAudio, stop: stopAudio, getStream, setTrackEnabled } = useAudioCapture()
 const { connected, connect: connectWS, sendAudio, sendSignal, disconnect: disconnectWS } = useMeetingWebSocket()
 const { isReady: webrtcReady, initialize: initWebRTC, connectToPeer, handleSignal: handleWebRTCSignal, closePeerConnection, closeAll: closeAllWebRTC } = useWebRTC()
-const { streaming, ask: askTempChat } = useTempChat()
 
 // ---- 计时器 ----
 let timerInterval: ReturnType<typeof setInterval> | null = null
@@ -89,8 +80,9 @@ const participantList = computed(() => {
   return Array.from(participants.values())
 })
 
-const transcriptContext = computed(() => {
-  return finalTranscripts.map((t) => `${t.speaker_name}: ${t.text}`).join('\n')
+/** 当前用户是否为会议室内最后一人 */
+const isLastParticipant = computed(() => {
+  return participants.size <= 1
 })
 
 // ---- 生命周期 ----
@@ -266,24 +258,26 @@ function toggleMic() {
 }
 
 // ---- 结束会议 ----
-async function endMeeting() {
+const showEndConfirmDialog = ref(false)
+
+function endMeeting() {
+  showEndConfirmDialog.value = true
+}
+
+async function confirmEndMeeting() {
+  showEndConfirmDialog.value = false
   try {
-    await ElMessageBox.confirm('确定要结束会议吗？', '结束会议', {
-      confirmButtonText: '结束',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
     const result = await meetingApi.end(meetingId)
     if (result.need_summary) {
       ElMessage.success('会议已结束，正在生成纪要')
     } else {
       ElMessage.success('会议已结束')
     }
-    cleanup()
-    router.push('/dashboard')
-  } catch {
-    // 取消
+  } catch (e: any) {
+    ElMessage.error(e.message || '结束会议失败')
   }
+  cleanup()
+  router.push('/dashboard')
 }
 
 function handleMeetingEnded(_meetingId: string, _taskId: string | null) {
@@ -294,7 +288,14 @@ function handleMeetingEnded(_meetingId: string, _taskId: string | null) {
 }
 
 // ---- 离开会议 ----
+const showLeaveConfirmDialog = ref(false)
+
 function leaveMeeting() {
+  showLeaveConfirmDialog.value = true
+}
+
+function confirmLeaveMeeting() {
+  showLeaveConfirmDialog.value = false
   cleanup()
   meetingStore.reset()
   router.push('/dashboard')
@@ -322,49 +323,29 @@ function startTimer() {
   }, 1000)
 }
 
-// ---- AI 对话 ----
-async function sendChat() {
-  const question = chatInput.value.trim()
-  if (!question || streaming.value) return
-
-  // 添加用户消息
-  chatMessages.push({
-    role: 'user',
-    content: question,
-    time: formatTime(new Date()),
+// ---- 视频停靠区 ----
+function addDockedVideo(userId: number, userName: string, stream: MediaStream) {
+  // 避免重复添加
+  if (dockedVideos.some((v) => v.userId === userId)) return
+  dockedVideos.push({
+    userId,
+    userName,
+    stream,
+    minimizedAt: formatTime(new Date()),
   })
+}
 
-  // 添加占位 AI 消息
-  const aiMsg: ChatMsg = {
-    role: 'assistant',
-    content: '',
-    time: formatTime(new Date()),
-  }
-  chatMessages.push(aiMsg)
-
-  chatInput.value = ''
-
-  try {
-    await askTempChat(
-      transcriptContext.value,
-      question,
-      chatMessages.slice(0, -2).map((m) => ({ role: m.role, content: m.content })),
-      (token) => {
-        aiMsg.content += token
-        scrollTranscriptToBottom()
-      },
-      () => {
-        // done
-      },
-    )
-  } catch (e: any) {
-    aiMsg.content = '抱歉，对话失败了。'
+function removeDockedVideo(userId: number) {
+  const idx = dockedVideos.findIndex((v) => v.userId === userId)
+  if (idx !== -1) {
+    dockedVideos.splice(idx, 1)
   }
 }
 
-async function handleQuickQuestion(question: string) {
-  chatInput.value = question
-  await sendChat()
+function restoreVideo(userId: number) {
+  // 预留：将最小化的视频恢复到主显示区域
+  // 后续视频功能上架时实现
+  removeDockedVideo(userId)
 }
 
 // ---- 工具函数 ----
@@ -488,73 +469,113 @@ function toggleSidebar() {
       </div>
     </div>
 
-    <!-- 右侧 AI 对话侧边栏 -->
+    <!-- 侧边栏展开按钮（收起时显示） -->
+    <button
+      v-show="sidebarCollapsed"
+      class="sidebar-expand-btn"
+      @click="toggleSidebar"
+      title="展开视频停靠区"
+    >
+      ⟨
+    </button>
+
+    <!-- 右侧视频停靠区 -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title">
-          <div class="sidebar-icon">AI</div>
-          <span>AI 助手</span>
+          <div class="sidebar-icon">📹</div>
+          <span>视频停靠区</span>
         </div>
         <button class="sidebar-toggle" @click="toggleSidebar">
           {{ sidebarCollapsed ? '⟨' : '⟩' }}
         </button>
       </div>
 
-      <div class="sidebar-protocol">
-        <span class="protocol-badge">SSE /temp/question</span>
-        <span>基于当前实时转写内容</span>
+      <div class="sidebar-hint">
+        <span class="hint-badge">视频停靠</span>
+        <span>最小化的视频窗口将显示在此处</span>
       </div>
 
-      <!-- 聊天消息 -->
-      <div class="chat-messages">
+      <div class="sidebar-wip-banner">
+        <span class="wip-icon">🚧</span>
+        <span>视频功能开发中，敬请期待</span>
+      </div>
+
+      <!-- 停靠视频列表 -->
+      <div class="docked-videos">
         <div
-          v-for="(msg, idx) in chatMessages"
-          :key="idx"
-          class="chat-msg"
-          :class="msg.role === 'user' ? 'chat-msg-user' : 'chat-msg-ai'"
+          v-for="video in dockedVideos"
+          :key="video.userId"
+          class="docked-video-card"
         >
-          <div class="chat-bubble">
-            <span v-if="msg.content">{{ msg.content }}</span>
-            <span v-else class="streaming-cursor"></span>
+          <div class="docked-video-preview">
+            <video
+              v-if="video.stream"
+              :srcObject="video.stream"
+              autoplay
+              muted
+              playsinline
+              class="docked-video-element"
+            ></video>
+            <div v-else class="docked-video-placeholder">
+              <div class="docked-video-avatar">{{ video.userName?.charAt(0) || '?' }}</div>
+            </div>
           </div>
-          <span class="chat-time">{{ msg.time }}</span>
-        </div>
-      </div>
-
-      <!-- 快捷问题 -->
-      <div class="quick-questions">
-        <button class="qq-chip" @click="handleQuickQuestion('总结当前讨论')">
-          总结当前讨论
-        </button>
-        <button class="qq-chip" @click="handleQuickQuestion('提取行动项')">
-          提取行动项
-        </button>
-        <button class="qq-chip" @click="handleQuickQuestion('列出争议点')">
-          列出争议点
-        </button>
-      </div>
-
-      <!-- 输入区 -->
-      <div class="chat-input-area">
-        <div class="chat-input-wrapper">
-          <textarea
-            v-model="chatInput"
-            class="chat-input"
-            placeholder="向 AI 提问..."
-            rows="1"
-            :disabled="streaming"
-            @keydown.enter.exact.prevent="sendChat"
-          ></textarea>
+          <div class="docked-video-info">
+            <span class="docked-video-name">{{ video.userName }}</span>
+            <span class="docked-video-time">{{ video.minimizedAt }}</span>
+          </div>
           <button
-            class="chat-send-btn"
-            :disabled="streaming || !chatInput.trim()"
-            @click="sendChat"
+            class="docked-video-restore"
+            title="恢复视频"
+            @click="restoreVideo(video.userId)"
           >
-            ↑
+            ↥
           </button>
+          <button
+            class="docked-video-close"
+            title="关闭视频"
+            @click="removeDockedVideo(video.userId)"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-if="dockedVideos.length === 0" class="docked-videos-empty">
+          <div class="empty-icon">🎥</div>
+          <p>暂无停靠的视频</p>
+          <p class="empty-hint">开启摄像头并最小化后，视频将出现在这里</p>
         </div>
       </div>
     </aside>
+
+    <!-- 结束会议确认弹窗 -->
+    <ConfirmDialog
+      :visible="showEndConfirmDialog"
+      title="结束会议"
+      message="确定要结束会议吗？结束后所有参会者将被移出。"
+      confirm-text="结束会议"
+      cancel-text="取消"
+      type="warning"
+      @close="showEndConfirmDialog = false"
+      @confirm="confirmEndMeeting"
+    />
+
+    <!-- 离开会议确认弹窗 -->
+    <ConfirmDialog
+      :visible="showLeaveConfirmDialog"
+      title="离开会议室"
+      :message="isLastParticipant
+        ? '您离开后会议室将被销毁，会议自动结束。'
+        : '确定要离开会议室吗？'"
+      confirm-text="离开"
+      cancel-text="取消"
+      :type="isLastParticipant ? 'danger' : 'warning'"
+      :subtitle="isLastParticipant ? '您是会议室内最后一人' : ''"
+      @close="showLeaveConfirmDialog = false"
+      @confirm="confirmLeaveMeeting"
+    />
   </div>
 </template>
 
@@ -578,6 +599,35 @@ function toggleSidebar() {
     .sidebar {
       display: none;
     }
+  }
+}
+
+// ---- 侧边栏展开按钮（折叠时悬浮在右侧） ----
+.sidebar-expand-btn {
+  position: fixed;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 64px;
+  border: 1px solid var(--color-stone-200);
+  border-radius: 8px 0 0 8px;
+  background: white;
+  color: var(--color-stone-500);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--color-stone-50);
+    color: var(--color-stone-700);
+    border-color: var(--color-stone-300);
+    box-shadow: -2px 0 12px rgba(0, 0, 0, 0.1);
   }
 }
 
@@ -923,7 +973,7 @@ function toggleSidebar() {
   }
 }
 
-// ---- 右侧 AI 对话侧边栏 ----
+// ---- 右侧视频停靠侧边栏 ----
 .sidebar {
   background: white;
   border-left: 1px solid var(--color-stone-200);
@@ -985,8 +1035,8 @@ function toggleSidebar() {
   }
 }
 
-// ---- 协议提示 ----
-.sidebar-protocol {
+// ---- 停靠区提示 ----
+.sidebar-hint {
   padding: 8px 20px;
   border-bottom: 1px solid var(--color-stone-100);
   display: flex;
@@ -996,173 +1046,184 @@ function toggleSidebar() {
   color: var(--color-stone-400);
 }
 
-.protocol-badge {
+.hint-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: var(--color-amber-50);
-  border: 1px solid var(--color-amber-200);
+  background: var(--color-info-light, #e0f2fe);
+  border: 1px solid var(--color-info-border, #bae6fd);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-amber-600);
+  color: var(--color-info, #0284c7);
 }
 
-// ---- 聊天消息 ----
-.chat-messages {
+// ---- 视频功能未完提示 ----
+.sidebar-wip-banner {
+  margin: 8px 16px;
+  padding: 8px 14px;
+  background: var(--color-warning-light, #fef3c7);
+  border: 1px solid var(--color-warning-border, #fcd34d);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-warning, #b45309);
+
+  .wip-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+}
+
+// ---- 停靠视频列表 ----
+.docked-videos {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
-.chat-msg {
+.docked-video-card {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  animation: slideIn 0.25s ease-out;
-}
-
-.chat-msg-user { align-items: flex-end; }
-.chat-msg-ai { align-items: flex-start; }
-
-.chat-bubble {
-  max-width: 100%;
-  padding: 12px 16px;
-  border-radius: var(--radius-lg);
-  font-size: 14px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.chat-msg-user .chat-bubble {
-  background: var(--color-amber-400);
-  color: var(--color-stone-900);
-  border-bottom-right-radius: 4px;
-}
-
-.chat-msg-ai .chat-bubble {
-  background: var(--color-stone-100);
-  color: var(--color-stone-800);
-  border-bottom-left-radius: 4px;
-}
-
-.chat-time {
-  font-size: 11px;
-  color: var(--color-stone-400);
-  padding: 0 4px;
-}
-
-// ---- 流式光标 ----
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  background: var(--color-amber-500);
-  margin-left: 2px;
-  animation: blink 0.8s infinite;
-  vertical-align: middle;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-// ---- 快捷问题 ----
-.quick-questions {
-  padding: 0 20px 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.qq-chip {
-  padding: 6px 12px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-stone-50);
   border: 1px solid var(--color-stone-200);
-  border-radius: 20px;
-  background: white;
-  color: var(--color-stone-600);
-  font-size: 12px;
-  font-family: var(--font-body);
-  cursor: pointer;
+  border-radius: var(--radius-md);
+  animation: slideIn 0.25s ease-out;
   transition: all 0.15s;
 
   &:hover {
-    background: var(--color-amber-50);
-    border-color: var(--color-amber-200);
-    color: var(--color-amber-600);
+    border-color: var(--color-stone-300);
+    box-shadow: var(--shadow-sm);
   }
 }
 
-// ---- 输入区 ----
-.chat-input-area {
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-stone-200);
+.docked-video-preview {
+  width: 56px;
+  height: 42px;
+  border-radius: 6px;
+  overflow: hidden;
   flex-shrink: 0;
-}
-
-.chat-input-wrapper {
+  background: var(--color-stone-200);
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
 }
 
-.chat-input {
+.docked-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.docked-video-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-stone-300), var(--color-stone-400));
+}
+
+.docked-video-avatar {
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+}
+
+.docked-video-info {
   flex: 1;
-  padding: 12px 16px;
-  border: 1.5px solid var(--color-stone-200);
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-family: var(--font-body);
-  color: var(--color-stone-800);
-  background: var(--color-stone-50);
-  outline: none;
-  resize: none;
-  min-height: 44px;
-  max-height: 120px;
-  line-height: 1.5;
-  transition: all 0.2s;
-
-  &:focus {
-    border-color: var(--color-amber-400);
-    background: white;
-    box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.08);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.chat-send-btn {
-  width: 44px;
-  height: 44px;
+.docked-video-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-stone-700);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docked-video-time {
+  font-size: 11px;
+  color: var(--color-stone-400);
+  font-family: var(--font-mono);
+}
+
+.docked-video-restore,
+.docked-video-close {
+  width: 28px;
+  height: 28px;
   border: none;
-  border-radius: var(--radius-md);
-  background: var(--color-amber-400);
-  color: var(--color-stone-900);
-  font-size: 18px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
   flex-shrink: 0;
+  font-size: 14px;
+  transition: all 0.15s;
+}
 
-  &:hover:not(:disabled) {
-    background: var(--color-amber-500);
-    transform: translateY(-1px);
+.docked-video-restore {
+  background: var(--color-info-light, #e0f2fe);
+  color: var(--color-info, #0284c7);
+
+  &:hover {
+    background: var(--color-info, #0284c7);
+    color: white;
+  }
+}
+
+.docked-video-close {
+  background: var(--color-stone-100);
+  color: var(--color-stone-500);
+
+  &:hover {
+    background: var(--color-error);
+    color: white;
+  }
+}
+
+// ---- 停靠区空状态 ----
+.docked-videos-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-stone-400);
+
+  .empty-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+    opacity: 0.6;
   }
 
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  p {
+    font-size: 14px;
+    margin: 0 0 4px;
+    color: var(--color-stone-500);
+  }
+
+  .empty-hint {
+    font-size: 12px;
+    color: var(--color-stone-400);
+    margin-top: 4px;
   }
 }
 

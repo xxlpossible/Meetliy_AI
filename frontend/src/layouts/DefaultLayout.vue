@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 默认布局：顶部导航栏 + 主内容区
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -14,18 +15,16 @@ const navItems = [
   { name: 'chat', label: 'AI 对话', icon: 'ChatDotRound' },
 ]
 
-async function handleLogout() {
-  try {
-    await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
-      confirmButtonText: '退出',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    auth.logout()
-    router.push('/login')
-  } catch {
-    // 用户取消
-  }
+const showLogoutConfirm = ref(false)
+
+function handleLogout() {
+  showLogoutConfirm.value = true
+}
+
+function confirmLogout() {
+  showLogoutConfirm.value = false
+  auth.logout()
+  router.push('/login')
 }
 </script>
 
@@ -64,6 +63,18 @@ async function handleLogout() {
     <main class="main-content">
       <slot />
     </main>
+
+    <!-- 退出登录确认弹窗 -->
+    <ConfirmDialog
+      :visible="showLogoutConfirm"
+      title="退出登录"
+      message="确定要退出登录吗？"
+      confirm-text="退出"
+      cancel-text="取消"
+      type="warning"
+      @close="showLogoutConfirm = false"
+      @confirm="confirmLogout"
+    />
   </div>
 </template>
 

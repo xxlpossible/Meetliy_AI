@@ -4,7 +4,8 @@
 // 为已存在的会话修改关联的会议和知识库
 // ============================================================
 
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import type { Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import type { ChatSession, MeetingItem, KnowledgeItem } from '@/api/types'
 
@@ -42,6 +43,19 @@ const totalMeetingPages = computed(() => Math.max(1, Math.ceil(meetingTotal.valu
 const totalKnowledgePages = computed(() => Math.max(1, Math.ceil(knowledgeTotal.value / pageSize)))
 
 // ===== 数据加载 =====
+const knowledgeAnchorRef = ref<HTMLElement | null>(null)
+
+function scrollAnchorIntoView(anchorRef: Ref<HTMLElement | null>) {
+  const el = anchorRef.value
+  if (!el) return
+  el.scrollIntoView({ block: 'end', behavior: 'smooth' })
+  const scrollParent = el.closest('.modal-body') as HTMLElement | null
+  if (scrollParent) {
+    requestAnimationFrame(() => {
+      scrollParent.scrollTo({ top: scrollParent.scrollHeight, behavior: 'smooth' })
+    })
+  }
+}
 
 async function loadMeetings() {
   await chatStore.loadAvailableMeetings(meetingPage.value, meetingSearch.value)
@@ -49,6 +63,8 @@ async function loadMeetings() {
 
 async function loadKnowledge() {
   await chatStore.loadAvailableKnowledge(knowledgePage.value, knowledgeSearch.value)
+  await nextTick()
+  scrollAnchorIntoView(knowledgeAnchorRef)
 }
 
 function handleMeetingSearch() {
@@ -175,56 +191,62 @@ watch(() => props.visible, (val) => {
             </div>
           </div>
 
-          <div v-if="chatStore.optionsLoading" class="select-empty">
+          <!-- 会议列表：仅首次加载无数据时显示"加载中"；翻页时保留旧列表 -->
+          <div
+            v-if="chatStore.meetingsLoading && chatStore.availableMeetings.length === 0"
+            class="select-empty"
+          >
             <p>加载中...</p>
           </div>
 
-          <div v-else-if="chatStore.availableMeetings.length === 0" class="select-empty">
+          <div v-else-if="!chatStore.meetingsLoading && chatStore.availableMeetings.length === 0" class="select-empty">
             <div class="select-empty-icon">📋</div>
             <p>暂无可选择的会议</p>
           </div>
 
           <div v-else>
-            <div
-              v-for="meeting in chatStore.availableMeetings"
-              :key="meeting.id"
-              class="select-option"
-              :class="{ selected: isMeetingSelected(meeting) }"
-              @click="toggleMeeting(meeting)"
-            >
-              <div class="select-option-checkbox">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
+            <div :class="{ 'select-list-fetching': chatStore.meetingsLoading }">
+              <div
+                v-for="meeting in chatStore.availableMeetings"
+                :key="meeting.id"
+                class="select-option"
+                :class="{ selected: isMeetingSelected(meeting) }"
+                @click="toggleMeeting(meeting)"
+              >
+                <div class="select-option-checkbox">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div class="select-option-icon icon-meeting">📋</div>
+                <div class="select-option-info">
+                  <div class="select-option-name">{{ meeting.meeting_name }}</div>
+                  <div class="select-option-desc">ID: {{ meeting.id }} · {{ meeting.task_id ? '已转写' : '处理中' }}</div>
+                </div>
               </div>
-              <div class="select-option-icon icon-meeting">📋</div>
-              <div class="select-option-info">
-                <div class="select-option-name">{{ meeting.meeting_name }}</div>
-                <div class="select-option-desc">ID: {{ meeting.id }} · {{ meeting.task_id ? '已转写' : '处理中' }}</div>
-              </div>
-            </div>
 
-            <!-- 会议分页 -->
-            <div v-if="totalMeetingPages > 1" class="select-pagination">
-              <button
-                class="select-pagination-btn"
-                :disabled="meetingPage <= 1"
-                @click="handleMeetingPageChange(meetingPage - 1)"
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M15 18l-6-6 6-6"/>
-                </svg>
-              </button>
-              <span class="select-pagination-text">{{ meetingPage }} / {{ totalMeetingPages }}</span>
-              <button
-                class="select-pagination-btn"
-                :disabled="meetingPage >= totalMeetingPages"
-                @click="handleMeetingPageChange(meetingPage + 1)"
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <path d="M9 18l6-6-6-6"/>
-                </svg>
-              </button>
+              <!-- 会议分页 -->
+              <div v-if="totalMeetingPages > 1" class="select-pagination">
+                <button
+                  class="select-pagination-btn"
+                  :disabled="meetingPage <= 1"
+                  @click="handleMeetingPageChange(meetingPage - 1)"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M15 18l-6-6 6-6"/>
+                  </svg>
+                </button>
+                <span class="select-pagination-text">{{ meetingPage }} / {{ totalMeetingPages }}</span>
+                <button
+                  class="select-pagination-btn"
+                  :disabled="meetingPage >= totalMeetingPages"
+                  @click="handleMeetingPageChange(meetingPage + 1)"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -256,56 +278,64 @@ watch(() => props.visible, (val) => {
               />
             </div>
 
-            <div v-if="chatStore.optionsLoading" class="select-empty">
+            <!-- 知识库列表：仅首次加载无数据时显示"加载中"；翻页时保留旧列表 -->
+            <div
+              v-if="chatStore.knowledgeLoading && chatStore.availableKnowledge.length === 0"
+              class="select-empty"
+            >
               <p>加载中...</p>
             </div>
 
-            <div v-else-if="chatStore.availableKnowledge.length === 0" class="select-empty">
+            <div v-else-if="!chatStore.knowledgeLoading && chatStore.availableKnowledge.length === 0" class="select-empty">
               <div class="select-empty-icon">📚</div>
               <p>暂无可选择的知识库</p>
             </div>
 
             <div v-else>
-              <div
-                v-for="kb in chatStore.availableKnowledge"
-                :key="kb.id"
-                class="select-option"
-                :class="{ selected: isKnowledgeSelected(kb) }"
-                @click="toggleKnowledge(kb)"
-              >
-                <div class="select-option-checkbox">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
+              <div :class="{ 'select-list-fetching': chatStore.knowledgeLoading }">
+                <div
+                  v-for="kb in chatStore.availableKnowledge"
+                  :key="kb.id"
+                  class="select-option"
+                  :class="{ selected: isKnowledgeSelected(kb) }"
+                  @click="toggleKnowledge(kb)"
+                >
+                  <div class="select-option-checkbox">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </div>
+                  <div class="select-option-icon icon-kb">📚</div>
+                  <div class="select-option-info">
+                    <div class="select-option-name">{{ kb.name }}</div>
+                    <div class="select-option-desc">{{ kb.description || '无描述' }}</div>
+                  </div>
                 </div>
-                <div class="select-option-icon icon-kb">📚</div>
-                <div class="select-option-info">
-                  <div class="select-option-name">{{ kb.name }}</div>
-                  <div class="select-option-desc">{{ kb.description || '无描述' }}</div>
-                </div>
-              </div>
 
-              <!-- 知识库分页 -->
-              <div v-if="totalKnowledgePages > 1" class="select-pagination">
-                <button
-                  class="select-pagination-btn"
-                  :disabled="knowledgePage <= 1"
-                  @click="handleKnowledgePageChange(knowledgePage - 1)"
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M15 18l-6-6 6-6"/>
-                  </svg>
-                </button>
-                <span class="select-pagination-text">{{ knowledgePage }} / {{ totalKnowledgePages }}</span>
-                <button
-                  class="select-pagination-btn"
-                  :disabled="knowledgePage >= totalKnowledgePages"
-                  @click="handleKnowledgePageChange(knowledgePage + 1)"
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </button>
+                <!-- 知识库分页 -->
+                <div v-if="totalKnowledgePages > 1" class="select-pagination">
+                  <button
+                    class="select-pagination-btn"
+                    :disabled="knowledgePage <= 1"
+                    @click="handleKnowledgePageChange(knowledgePage - 1)"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path d="M15 18l-6-6 6-6"/>
+                    </svg>
+                  </button>
+                  <span class="select-pagination-text">{{ knowledgePage }} / {{ totalKnowledgePages }}</span>
+                  <button
+                    class="select-pagination-btn"
+                    :disabled="knowledgePage >= totalKnowledgePages"
+                    @click="handleKnowledgePageChange(knowledgePage + 1)"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                  </button>
+                </div>
+                <!-- 锚点：翻页后自动滚动到此 -->
+                <div ref="knowledgeAnchorRef"></div>
               </div>
             </div>
           </div>
@@ -514,6 +544,13 @@ watch(() => props.visible, (val) => {
   color: var(--color-stone-500);
   padding: 0 6px;
   white-space: nowrap;
+}
+
+// 翻页时的微妙加载态（列表保留可见，透明度降低）
+.select-list-fetching {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.15s;
 }
 
 // 可选项
