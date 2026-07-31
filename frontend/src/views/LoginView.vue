@@ -54,7 +54,7 @@ async function handleRegister() {
   if (!valid) return
   loading.value = true
   try {
-    await authStore.register({ username: registerForm.username, password: registerForm.password })
+    await authStore.register({ username: registerForm.username, password: registerForm.password, confirmPassword: registerForm.confirmPassword })
     router.push('/dashboard')
   } catch (e: any) {
     ElMessage.error(e.message || '注册失败，请稍后重试')
