@@ -73,6 +73,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: meetily-celery
+    # 覆盖 entrypoint，直接启动 celery（不需要等 MySQL / 建表）
+    entrypoint: []
     command: >
       celery -A task.celery_app worker
       --loglevel=info
