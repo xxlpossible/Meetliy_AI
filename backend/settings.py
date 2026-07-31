@@ -1,4 +1,5 @@
 import os
+import re
 
 import yaml
 from dotenv import load_dotenv
@@ -129,6 +130,21 @@ class ConfigNotFoundError(Exception):
     pass
 
 
+def _substitute_env_vars(value):
+    """递归替换字符串中的 ${VAR_NAME} 或 ${VAR_NAME:-default} 为环境变量值。"""
+    if isinstance(value, str):
+        def _replacer(m):
+            var_name = m.group(1)
+            default = m.group(2)
+            return os.getenv(var_name, default)
+        return re.sub(r'\$\{(\w+)(?::-([^}]*))?\}', _replacer, value)
+    elif isinstance(value, dict):
+        return {k: _substitute_env_vars(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_substitute_env_vars(v) for v in value]
+    return value
+
+
 def load_settings_from_yaml(file_path: str) -> Settings:
     # Get current path
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -137,7 +153,20 @@ def load_settings_from_yaml(file_path: str) -> Settings:
         file_path = os.path.join(current_path, file_path)
 
     with open(file_path, 'r', encoding='utf-8') as f:
-        settings_dict = yaml.safe_load(f)
+        raw = f.read()
+
+    # 替换 ${ENV_VAR} 语法为实际环境变量值
+    raw = re.sub(r'\$\{(\w+)(?::-([^}]*))?\}', lambda m: os.getenv(m.group(1), m.group(2) or ''), raw)
+
+    settings_dict = yaml.safe_load(raw)
+
+    # 本地开发模式：自动将 Docker 服务名换回 127.0.0.1
+    if os.getenv('LOCAL_DEV', '').lower() in ('true', '1', 'yes'):
+        for key in ('database_url', 'redis_url', 'celery_redis_url'):
+            if key in settings_dict and isinstance(settings_dict[key], str):
+                settings_dict[key] = settings_dict[key].replace('@mysql:', '@127.0.0.1:')
+                settings_dict[key] = settings_dict[key].replace('@redis:', '@127.0.0.1:')
+                settings_dict[key] = settings_dict[key].replace('redis://redis:', 'redis://127.0.0.1:')
 
     for key in settings_dict:
         if key not in Settings.__fields__.keys():

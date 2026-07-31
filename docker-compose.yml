@@ -1,0 +1,191 @@
+# ============================================================
+# Meetily Docker Compose 生产环境部署
+# 适配：2核4G 云服务器
+# 架构：Nginx → FastAPI + Celery Worker + MySQL + Redis
+# ============================================================
+
+version: "3.8"
+
+services:
+  # ─────────────────────────────────────────────
+  # Nginx 反向代理 + 前端静态文件
+  # ─────────────────────────────────────────────
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: meetily-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - meetily-net
+    restart: unless-stopped
+    mem_limit: 128m
+    mem_reservation: 64m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # FastAPI 后端（含 ChromaDB + LangGraph Checkpoint）
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: meetily-backend
+    ports:
+      - "31818:31818"
+    env_file:
+      - .env
+    environment:
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - meetily-net
+    restart: unless-stopped
+    mem_limit: 1g
+    mem_reservation: 512m
+    volumes:
+      # 挂载 config.yaml，部署后可直接在服务器上编辑
+      - ./backend/config.yaml:/app/config.yaml:ro
+      # 数据持久化
+      - chroma_data:/app/chroma_db
+      - checkpoints_data:/app/checkpoints_db
+      - uploads_data:/app/uploads
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ─────────────────────────────────────────────
+  # Celery Worker（异步任务：文件解析、转录等）
+  # ─────────────────────────────────────────────
+  celery-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: meetily-celery
+    command: >
+      celery -A task.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --pool=eventlet
+    env_file:
+      - .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - meetily-net
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
+    volumes:
+      - ./backend/config.yaml:/app/config.yaml:ro
+      - uploads_data:/app/uploads
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # MySQL 8.0
+  # ─────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: meetily-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-graduation_db}
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --innodb-buffer-pool-size=536870912
+      --innodb-log-file-size=134217728
+      --max-connections=200
+      --performance-schema=ON
+    ports:
+      - "3306:3306"
+    networks:
+      - meetily-net
+    restart: unless-stopped
+    mem_limit: 1g
+    mem_reservation: 512m
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────────
+  # Redis 7（缓存 + Celery 消息队列）
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: meetily-redis
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    ports:
+      - "6379:6379"
+    networks:
+      - meetily-net
+    restart: unless-stopped
+    mem_limit: 256m
+    mem_reservation: 128m
+    volumes:
+      - redis_data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ─────────────────────────────────────────────
+# 自定义网络
+# ─────────────────────────────────────────────
+networks:
+  meetily-net:
+    driver: bridge
+    name: meetily-net
+
+# ─────────────────────────────────────────────
+# 持久化数据卷
+# ─────────────────────────────────────────────
+volumes:
+  mysql_data:
+    name: meetily-mysql-data
+  redis_data:
+    name: meetily-redis-data
+  chroma_data:
+    name: meetily-chroma-data
+  checkpoints_data:
+    name: meetily-checkpoints-data
+  uploads_data:
+    name: meetily-uploads-data

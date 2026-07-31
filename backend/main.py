@@ -1,6 +1,11 @@
+import dotenv
+
+# 必须在所有业务模块导入之前加载 .env，
+# 否则 settings.py 等模块在 import 时无法读取环境变量
+dotenv.load_dotenv(".env")
+
 from contextlib import asynccontextmanager
 
-import dotenv
 from fastapi import FastAPI
 
 from app.api.router import router
@@ -29,8 +34,6 @@ def create_app():
 
 
 app = create_app()
-
-dotenv.load_dotenv(".env")
 
 if __name__ == '__main__':
     import uvicorn

@@ -1,5 +1,7 @@
 """CORS 中间件配置（从 main.py 提取）。"""
 
+import os
+
 from starlette.middleware.cors import CORSMiddleware
 
 # 允许的 Origins
@@ -10,6 +12,11 @@ ORIGINS = [
     "http://127.0.0.1",
     "http://192.168.11.210:31818",
 ]
+
+# 生产环境通过环境变量 CORS_ORIGINS 追加额外域名（逗号分隔）
+_cors_env = os.getenv("CORS_ORIGINS", "")
+if _cors_env:
+    ORIGINS.extend([o.strip() for o in _cors_env.split(",") if o.strip()])
 
 
 def setup_cors(app):

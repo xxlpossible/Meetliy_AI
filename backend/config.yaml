@@ -1,6 +1,11 @@
+# Meetily 配置文件
+# Docker 部署：使用服务名作为地址（mysql/redis 是 docker-compose 中的 service name）
+# 本地开发：设置环境变量 LOCAL_DEV=true 自动切换为 127.0.0.1
+# 密码通过 ${MYSQL_ROOT_PASSWORD} 从 .env 注入，不写明文
+
 database_url:
-  "mysql+pymysql://root:123456@127.0.0.1:3306/graduation_db?charset=utf8mb4"
+  "mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-123456}@mysql:3306/graduation_db?charset=utf8mb4"
 
-redis_url: "redis://127.0.0.1:6379/7"
+redis_url: "redis://redis:6379/7"
 
-celery_redis_url: "redis://127.0.0.1:6379/9"
+celery_redis_url: "redis://redis:6379/9"
