@@ -13,7 +13,7 @@ class OSSClientUtil:
 
     def __init__(self, env_path: str | None = None, region: str = "cn-beijing"):
         if env_path is None:
-            env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
         # 1. 加载环境变量
         dotenv.load_dotenv(env_path)
 

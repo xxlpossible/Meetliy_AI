@@ -22,7 +22,7 @@ SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
 # 持久化上传目录：文件保存于此，路径传给 Celery worker 解析，解析完成后由任务清理。
 # Celery worker 与 FastAPI 需部署在同一机器方可访问该路径（毕设单机部署场景）。
 # 路径基于本文件位置推导出 backend 根目录，避免依赖运行时 CWD。
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 UPLOAD_DIR = os.path.join(_BACKEND_DIR, "data", "knowledge_uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 

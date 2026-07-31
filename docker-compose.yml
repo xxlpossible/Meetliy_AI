@@ -59,6 +59,8 @@ services:
       - chroma_data:/app/chroma_db
       - checkpoints_data:/app/checkpoints_db
       - uploads_data:/app/uploads
+      - knowledge_uploads_data:/app/data/knowledge_uploads
+      - meeting_audio_data:/app/data/meeting_audio
     logging:
       driver: "json-file"
       options:
@@ -95,6 +97,8 @@ services:
     volumes:
       - ./backend/config.yaml:/app/config.yaml:ro
       - uploads_data:/app/uploads
+      - knowledge_uploads_data:/app/data/knowledge_uploads
+      - meeting_audio_data:/app/data/meeting_audio
     logging:
       driver: "json-file"
       options:
@@ -189,3 +193,7 @@ volumes:
     name: meetily-checkpoints-data
   uploads_data:
     name: meetily-uploads-data
+  knowledge_uploads_data:
+    name: meetily-knowledge-uploads-data
+  meeting_audio_data:
+    name: meetily-meeting-audio-data

@@ -1,4 +1,5 @@
 # database/check_points.py
+import os
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -24,11 +25,14 @@ class CheckpointerManager:
     async def init(cls):
         if cls._checkpointer is not None:
             return
-        # Path(__file__) 获取当前文件 check_points.py 的路径
+        # Path(__file__) 获取当前文件 checkpoints.py 的路径
         # .parent 是 database/ 目录
-        # .parent.parent 是 backend/ 目录（即上一级）
-        base_dir = Path(__file__).parent.parent
-        db_path = base_dir / "checkpoints.db"
+        # .parent.parent 是 core/ 目录
+        # .parent.parent.parent 是 /app/ 目录（backend 根目录）
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        db_path = base_dir / "checkpoints_db" / "checkpoints.db"
+        # 确保父目录存在（SQLite 不会自动创建）
+        os.makedirs(db_path.parent, exist_ok=True)
         # 确保转换为字符串路径，并使用绝对路径以防万一
         db_path_str = str(db_path.absolute())
         # AsyncSqliteSaver.from_conn_string 返回一个异步上下文管理器
