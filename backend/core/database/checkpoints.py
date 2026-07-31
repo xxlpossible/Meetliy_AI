@@ -25,11 +25,20 @@ class CheckpointerManager:
     async def init(cls):
         if cls._checkpointer is not None:
             return
-        # Path(__file__) 获取当前文件 checkpoints.py 的路径
-        # .parent 是 database/ 目录
-        # .parent.parent 是 core/ 目录
-        # .parent.parent.parent 是 /app/ 目录（backend 根目录）
-        base_dir = Path(__file__).resolve().parent.parent.parent
+        # 自动检测 backend 根目录：向上查找包含 config.yaml 的目录
+        # 兼容本地开发（__file__ 在 D:\...\backend\core\database\...）
+        # 和 Docker 部署（__file__ 在 /app/core/database/...，多一层 /app/ 前缀）
+        def _find_backend_dir():
+            current = Path(__file__).resolve().parent
+            for _ in range(6):
+                if (current / "config.yaml").exists():
+                    return current
+                if current.parent == current:
+                    break
+                current = current.parent
+            raise RuntimeError("无法定位 backend 根目录（未找到 config.yaml）")
+
+        base_dir = _find_backend_dir()
         db_path = base_dir / "checkpoints_db" / "checkpoints.db"
         # 确保父目录存在（SQLite 不会自动创建）
         os.makedirs(db_path.parent, exist_ok=True)

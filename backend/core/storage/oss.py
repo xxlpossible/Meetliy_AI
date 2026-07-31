@@ -13,9 +13,20 @@ class OSSClientUtil:
 
     def __init__(self, env_path: str | None = None, region: str = "cn-beijing"):
         if env_path is None:
-            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+            # 向上查找 .env 文件（兼容本地和 Docker）
+            current = os.path.dirname(os.path.abspath(__file__))
+            for _ in range(6):
+                candidate = os.path.join(current, ".env")
+                if os.path.exists(candidate):
+                    env_path = candidate
+                    break
+                parent = os.path.dirname(current)
+                if parent == current:
+                    break
+                current = parent
         # 1. 加载环境变量
-        dotenv.load_dotenv(env_path)
+        if env_path and os.path.exists(env_path):
+            dotenv.load_dotenv(env_path)
 
         # 2. 创建凭证提供者（从环境变量读取）
         self.credentials_provider = oss.credentials.EnvironmentVariableCredentialsProvider()

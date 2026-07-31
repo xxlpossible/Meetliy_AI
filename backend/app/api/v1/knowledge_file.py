@@ -21,8 +21,22 @@ SUPPORTED_SUFFIXES = {ext.lstrip(".") for ext in get_supported_extensions()}
 
 # 持久化上传目录：文件保存于此，路径传给 Celery worker 解析，解析完成后由任务清理。
 # Celery worker 与 FastAPI 需部署在同一机器方可访问该路径（毕设单机部署场景）。
-# 路径基于本文件位置推导出 backend 根目录，避免依赖运行时 CWD。
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# 路径基于本文件位置推导出 backend 根目录，兼容本地开发和 Docker 部署。
+# Docker 中 __file__ 多一层 /app/ 前缀（COPY backend/ . → /app/app/...），需要往上多走一层。
+def _find_backend_dir():
+    """自动检测 backend 根目录（兼容本地和 Docker）。"""
+    current = os.path.dirname(os.path.abspath(__file__))
+    # 从当前文件向上查找，直到找到包含 config.yaml 的目录
+    for _ in range(6):
+        if os.path.exists(os.path.join(current, "config.yaml")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    raise RuntimeError("无法定位 backend 根目录（未找到 config.yaml）")
+
+_BACKEND_DIR = _find_backend_dir()
 UPLOAD_DIR = os.path.join(_BACKEND_DIR, "data", "knowledge_uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
