@@ -7,8 +7,6 @@
 #   3. 启动 Uvicorn
 # ============================================================
 
-set -e
-
 echo "========================================"
 echo "  Meetily Backend - Starting..."
 echo "========================================"
@@ -17,35 +15,34 @@ echo "========================================"
 echo "[1/3] Waiting for MySQL to be ready..."
 
 # 用 grep + sed 从 config.yaml 解析 host 和 port
-# config.yaml 格式:
-#   database_url:
-#     "mysql+pymysql://root:xxx@mysql:3306/graduation_db?..."
 DB_URL=$(grep -A1 'database_url' /app/config.yaml | tail -1 | sed 's/.*"\(.*\)".*/\1/')
 DB_HOST=$(echo "$DB_URL" | sed 's/.*@\([^:]*\):.*/\1/')
 DB_PORT=$(echo "$DB_URL" | sed 's/.*:\([0-9]*\)\/.*/\1/')
 
 echo "  MySQL target: ${DB_HOST}:${DB_PORT}"
 
-# 使用 /dev/tcp 或 Python 等待端口可用
-for i in $(seq 1 60); do
-    if python -c "
+# 等待 MySQL 端口可用
+MAX_RETRIES=120
+RETRY=0
+while [ $RETRY -lt $MAX_RETRIES ]; do
+    python -c "
 import socket
 try:
-    s = socket.create_connection(('$DB_HOST', int('$DB_PORT')), timeout=2)
+    s = socket.create_connection(('$DB_HOST', int('$DB_PORT')), timeout=5)
     s.close()
-    exit(0)
-except:
+except Exception:
     exit(1)
-" 2>/dev/null; then
-        echo "  ✓ MySQL is ready after ${i}s"
-        break
-    fi
-    if [ "$i" -eq 60 ]; then
-        echo "  ✗ MySQL did not become ready in 60s"
+" && break
+
+    RETRY=$((RETRY + 1))
+    if [ $RETRY -eq $MAX_RETRIES ]; then
+        echo "  ✗ MySQL did not become ready in ${MAX_RETRIES}s"
         exit 1
     fi
     sleep 1
 done
+
+echo "  ✓ MySQL is ready after ${RETRY}s"
 
 # ── 2. 初始化数据库表结构 ──
 echo "[2/3] Initializing database tables..."
