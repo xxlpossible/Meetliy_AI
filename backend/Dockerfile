@@ -9,7 +9,9 @@ LABEL maintainer="dbs"
 LABEL description="Meetily FastAPI Backend"
 
 # 系统依赖：gcc 用于编译某些 Python 包，libmagic 用于文件类型检测
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# 使用阿里云 Debian 镜像源加速
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
@@ -23,7 +25,8 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
 
 # 安装 Python 依赖（不安装 dev 依赖）
-RUN uv sync --frozen --no-dev
+# 使用阿里云 PyPI 镜像加速
+RUN uv sync --frozen --no-dev --index-url https://mirrors.aliyun.com/pypi/simple/
 
 # ---- 第二阶段：复制源码 ----
 COPY backend/ .
