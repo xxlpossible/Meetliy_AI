@@ -57,7 +57,11 @@ def main():
         sys.exit(1)
 
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+        raw = f.read()
+
+    # 替换 ${ENV_VAR} 为环境变量值（与 settings.py 保持一致）
+    raw = re.sub(r'\$\{(\w+)(?::-([^}]*))?\}', lambda m: os.getenv(m.group(1), m.group(2) or ''), raw)
+    config = yaml.safe_load(raw)
 
     db_url = config.get("database_url")
     if not db_url:
