@@ -21,10 +21,14 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 
 WORKDIR /app
 
+# 设置虚拟环境路径，让 uv 和后续命令都能找到
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 # ---- 第一阶段：安装依赖（利用 Docker 缓存层） ----
 COPY backend/pyproject.toml backend/uv.lock ./
 
-# 安装 Python 依赖（不安装 dev 依赖）
+# 安装 Python 依赖到虚拟环境（不安装 dev 依赖）
 # 使用阿里云 PyPI 镜像加速
 RUN uv sync --frozen --no-dev --index-url https://mirrors.aliyun.com/pypi/simple/
 
