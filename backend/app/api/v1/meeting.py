@@ -599,7 +599,6 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
             # 最后一人离开：自动结束会议（合并录音 → OSS 上传 → 触发转录任务）
             logger.info(f"[Meeting] 最后一名参会者离开，自动结束会议: meeting={meeting_id}")
             try:
-                from api.v1.meeting import auto_end_meeting
                 await auto_end_meeting(meeting_id)
             except Exception:
                 logger.exception(f"[Meeting] 自动结束会议失败: meeting={meeting_id}")

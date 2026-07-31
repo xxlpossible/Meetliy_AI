@@ -64,8 +64,8 @@ async def run_benchmark(
     通过 mock 将 Router / LLM / DB / rerank 全部替换为 AsyncMock，
     仅测量 Graph 编排开销。
     """
-    from service.llm_graph_service import ChatAgent
-    from service.context_builder import SESSION_HISTORY
+    from agent.chat.agent import ChatAgent
+    from rag.memory import SESSION_HISTORY
     from langchain_core.messages import AIMessage
 
     question = "张三在产品发布会上关于性能测试说了什么？"
@@ -84,27 +84,17 @@ async def run_benchmark(
     for run_i in range(iterations):
         agent = ChatAgent()
 
-        # ---- 直接替换 agent 的节点方法 ----
-        agent._router_node = AsyncMock(return_value={
-            "router_result": {
-                "intent": "detail", "speaker": ["张三"], "topic": ["产品发布"],
-                "keywords": ["测试", "性能", "Graph"], "confidence": 0.92,
-            },
-            "query_type": "细节性",
-        })
-        agent._llm_call = AsyncMock(return_value={
-            "messages": [AIMessage(content="[mock] 张三在发布会上重点提到性能测试...")]
-        })
-
         # ---- 替换外部依赖 ----
+        # 注意：重构后节点函数在各 agent/chat/nodes/ 模块中独立定义，
+        # patch 路径需指向实际调用处所在的模块。
         with (
-            patch('utils.siliconflow_embedding.db_manager.search',
+            patch('rag.embedding.db_manager.search',
                   MagicMock(return_value=_make_search_result(8))),
-            patch('service.llm_graph_service.retrieve_past_memory',
+            patch('agent.chat.nodes.memory_retrieval.retrieve_past_memory',
                   MagicMock(return_value=_make_memory_results(3))),
-            patch('service.llm_graph_service.rerank.rerank_context',
+            patch('agent.chat.nodes.meeting_retrieval.rerank.rerank_context',
                   AsyncMock(return_value=[f"reranked_{i}" for i in range(5)])),
-            patch('service.llm_graph_service.rerank.rerank_multi_collection',
+            patch('agent.chat.nodes.knowledge_retrieval.rerank.rerank_multi_collection',
                   AsyncMock(return_value=([f"kb_reranked_{i}" for i in range(3)], {}))),
         ):
             compiled = agent._build_graph()
@@ -149,8 +139,8 @@ async def run_with_delay(scenario: str, delay_ms: float = 50.0,
     在 mock 中加入 asyncio.sleep 模拟真实网络 IO，
     如果三路检索是并行的，总耗时应远小于串行求和。
     """
-    from service.llm_graph_service import ChatAgent
-    from service.context_builder import SESSION_HISTORY
+    from agent.chat.agent import ChatAgent
+    from rag.memory import SESSION_HISTORY
     from langchain_core.messages import AIMessage
 
     question = "张三在产品发布会上关于性能测试说了什么？"

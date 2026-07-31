@@ -30,6 +30,7 @@ const isHost = ref(false)
 const micEnabled = ref(true)
 const elapsedSeconds = ref(0)
 const transcriptArea = ref<HTMLElement | null>(null)
+const copyIdDone = ref(false)  // 复制 ID 成功反馈
 
 // ---- 参与者 ----
 const participants = reactive<Map<number, Participant>>(new Map())
@@ -84,6 +85,18 @@ const participantList = computed(() => {
 const isLastParticipant = computed(() => {
   return participants.size <= 1
 })
+
+// ---- 复制会议 ID ----
+async function copyMeetingId() {
+  try {
+    await navigator.clipboard.writeText(meetingId)
+    copyIdDone.value = true
+    ElMessage.success('会议 ID 已复制')
+    setTimeout(() => { copyIdDone.value = false }, 1500)
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
+}
 
 // ---- 生命周期 ----
 onMounted(async () => {
@@ -374,6 +387,20 @@ function toggleSidebar() {
               <span>实时转写中</span>
               <span>·</span>
               <span>会议ID: {{ meetingId.slice(0, 12) }}</span>
+              <button
+                class="copy-id-btn"
+                :class="{ copied: copyIdDone }"
+                title="复制会议 ID"
+                @click="copyMeetingId"
+              >
+                <svg v-if="!copyIdDone" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </button>
               <span v-if="!connected" class="ws-status ws-status-offline">· 离线</span>
               <span v-else class="ws-status ws-status-online">· 在线</span>
             </div>
@@ -695,6 +722,36 @@ function toggleSidebar() {
 
 .ws-status-offline {
   color: var(--color-error);
+}
+
+// 复制会议 ID 按钮
+.copy-id-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-stone-400);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--color-amber-50);
+    color: var(--color-amber-500);
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+
+  &.copied {
+    background: var(--color-amber-50);
+    color: var(--color-amber-500);
+  }
 }
 
 .live-dot {

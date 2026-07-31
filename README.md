@@ -26,11 +26,21 @@
                 ▼                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    FastAPI 后端（:31818）                         │
-│  ┌──────────┐ ┌───────────┐ ┌──────────┐ ┌──────────────────┐  │
-│  │ REST API │ │ WS 实时   │ │ Celery   │ │ LangGraph 编排   │  │
-│  │ 鉴权/会议│ │ 转写/信令 │ │ 异步任务 │ │ 纪要生成/RAG     │  │
-│  └────┬─────┘ └─────┬─────┘ └────┬─────┘ └────────┬─────────┘  │
-└───────┼─────────────┼────────────┼────────────────┼────────────┘
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  app/         API 层 —— 路由 / 鉴权 / 中间件              │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │  agent/       Agent 核心 —— ChatAgent / MeetingAgent      │   │
+│  │               LangGraph 编排 nodes / prompts / tools      │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │  rag/         RAG 检索 —— embedding / 检索 / 重排序 / 记忆│   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │  services/    业务编排 —— 聊天 / 会议 / ASR / 音频 / 文档 │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │  core/        基础设施 —— database / cache / llm / storage │   │
+│  ├──────────────────────────────────────────────────────────┤   │
+│  │  tasks/       Celery 异步 —— 转录 / 知识库文件解析        │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└───────┬─────────────┬────────────┬────────────────┬─────────────┘
         │             │            │                │
         ▼             ▼            ▼                ▼
    ┌────────┐  ┌──────────┐  ┌─────────┐    ┌────────────┐
@@ -45,7 +55,7 @@
                           └──────────────────┘
 ```
 
-**核心数据流**：浏览器麦克风 → WebSocket → DashScope ASR 实时转写 → PCM 录音 → 会议结束 ffmpeg 合并 → OSS 上传 → Celery 异步转写任务 → LangGraph 生成结构化纪要
+**核心数据流**：浏览器麦克风 → WebSocket → DashScope ASR 实时转写 → PCM 录音 → 会议结束 ffmpeg 合并 → OSS 上传 → Celery 异步转写任务 → MeetingAgent (LangGraph) 生成结构化纪要
 
 ## 技术栈
 
@@ -94,11 +104,7 @@
 
 ```
 the_graduation_project/
-├── .gitignore                         # 根级统一忽略规则
-├── .editorconfig                      # 编辑器缩进/换行规范
-├── README.md                          # 项目说明（本文件）
-│
-├── backend/                           # FastAPI 后端
+├── backend/                           # FastAPI 后端（Agent 标准架构）
 │   ├── main.py                        # 应用入口，监听 :31818
 │   ├── settings.py                    # 三层配置（.env → DB config 表 → config.yaml）
 │   ├── .env.example                   # 环境变量模板（复制为 .env 使用）
@@ -107,87 +113,111 @@ the_graduation_project/
 │   ├── uv.lock                        # 依赖锁文件
 │   ├── benchmark_graph.py             # LangGraph 性能基准测试
 │   │
-│   ├── api/                           # 路由层（/api/v1 前缀）
-│   │   ├── router.py                  # 根路由，聚合所有子路由
-│   │   ├── schemas.py                 # 通用响应模型 (resp_200, TokenData)
-│   │   └── v1/                        # v1 子路由
-│   │       ├── __init__.py            # 导出所有 router
-│   │       ├── auth.py                # 注册 / 登录 / Token 刷新（JWT 双 Token）
-│   │       ├── user.py                # 用户信息管理
-│   │       ├── meeting.py             # 会议管理（创建/加入/结束/列表/上传录音）
-│   │       ├── chat_message.py        # AI 对话（HTTP 摘要 + WebSocket 流式）
-│   │       ├── session.py             # 聊天会话管理（CRUD + 临时会话）
-│   │       ├── knowledge.py           # 知识库 CRUD + 权限控制
-│   │       └── knowledge_file.py      # 知识库文件上传 / 状态追踪 / 删除
+│   ├── app/                           # ★ 应用层 —— API 路由与中间件
+│   │   ├── api/
+│   │   │   ├── router.py              # 根路由，聚合所有子路由
+│   │   │   ├── schemas.py             # 通用响应模型 (resp_200, TokenData)
+│   │   │   ├── request.py             # 请求/响应 Pydantic Schema
+│   │   │   ├── deps.py                # 鉴权依赖注入 (get_current_user)
+│   │   │   └── v1/                    # v1 子路由
+│   │   │       ├── auth.py            # 注册 / 登录 / Token 刷新
+│   │   │       ├── user.py            # 用户信息管理
+│   │   │       ├── meeting.py         # 会议管理（创建/加入/结束/列表/上传录音）
+│   │   │       ├── chat.py            # AI 对话（SSE 流式）
+│   │   │       ├── session.py         # 聊天会话管理
+│   │   │       ├── knowledge.py       # 知识库 CRUD + 权限控制
+│   │   │       └── knowledge_file.py  # 知识库文件上传 / 状态追踪
+│   │   └── middleware/
+│   │       └── cors.py                # CORS 中间件
 │   │
-│   ├── database/                      # 数据层
-│   │   ├── base.py                    # session_getter 异步上下文管理器
-│   │   ├── service.py                 # DatabaseService（引擎创建）
-│   │   ├── check_points.py            # LangGraph checkpoint SQLite 管理
-│   │   ├── models/                    # SQLModel 数据模型（8 个）
-│   │   │   ├── user.py                # 用户模型
-│   │   │   ├── meeting.py             # 会议模型
-│   │   │   ├── transcription.py       # 转录任务模型
-│   │   │   ├── knowledge.py           # 知识库模型
-│   │   │   ├── knowledge_file.py      # 知识库文件模型
-│   │   │   ├── chatmessage.py         # 聊天消息模型
-│   │   │   ├── chat_session.py        # 聊天会话模型
-│   │   │   └── config.py              # 数据库配置表（API Key 等动态配置）
-│   │   ├── schemas/                   # Pydantic 响应 Schema
-│   │   │   └── schema.py              # 统一响应数据模型
+│   ├── agent/                         # ★ Agent 核心层 —— LangGraph 编排
+│   │   ├── base.py                    # Agent 抽象基类
+│   │   ├── chat/                      # ChatAgent —— RAG 对话
+│   │   │   ├── agent.py               # 主控：START→Router→三路检索→builder→LLM→END
+│   │   │   ├── state.py               # ChatState (TypedDict)
+│   │   │   ├── schemas.py             # RouterOutput 结构化输出
+│   │   │   ├── nodes/                 # 图节点（6 个）
+│   │   │   │   ├── router.py          # 意图路由（结构化输出 + 关键词兜底）
+│   │   │   │   ├── meeting_retrieval.py  # 会议库多路检索
+│   │   │   │   ├── memory_retrieval.py   # 历史记忆检索
+│   │   │   │   ├── knowledge_retrieval.py # 知识库检索
+│   │   │   │   ├── context_builder.py    # 上下文构建 + 降级判定
+│   │   │   │   └── llm_generate.py       # LLM 流式生成
+│   │   │   └── prompts/               # 提示词（3 个）
+│   │   │       ├── system.py          # 系统角色 + 反泄露指令
+│   │   │       ├── router.py          # 路由分类提示词
+│   │   │       └── fallback.py        # 四级降级兜底提示词
+│   │   └── meeting/                   # MeetingAgent —— 会议纪要生成
+│   │       ├── agent.py               # 主控：LLM→ASR Tool→润色→[纪要/行动项/主题]
+│   │       ├── state.py               # MeetingState (TypedDict, operator.add)
+│   │       ├── nodes/                 # 图节点（5 个）
+│   │       │   ├── llm_process.py     # LLM 纠错润色
+│   │       │   ├── tool_exec.py       # ASR 工具执行
+│   │       │   ├── summary.py         # 会议总结生成
+│   │       │   ├── action_items.py    # 行动项提取
+│   │       │   └── theme_seg.py       # 主题分段
+│   │       ├── tools/                 # 工具（1 个）
+│   │       │   └── asr.py             # DashScope 语音识别工具
+│   │       └── prompts/               # 提示词（4 个）
+│   │           ├── process.py         # 纠错润色提示词
+│   │           ├── summary.py         # 会议总结提示词
+│   │           ├── action.py          # 行动项提取提示词
+│   │           └── theme.py           # 主题分段提示词
 │   │
-│   ├── service/                       # 业务逻辑层
-│   │   ├── base.py                    # 服务基类
-│   │   ├── llm_graph_service.py       # LangGraph 纪要生成主流程（核心编排）
-│   │   ├── llm_service.py             # LLM 调用封装
-│   │   ├── meeting_manager.py         # 多人会议房间管理（WebSocket 信令）
-│   │   ├── meeting_callback.py        # 会议结束回调处理
-│   │   ├── audio_merger.py            # PCM → WAV → mp3 ffmpeg 音频合并
-│   │   ├── realtime_asr.py            # DashScope 实时语音识别 WebSocket 客户端
-│   │   ├── dashscope_file_asr.py      # DashScope 文件转写（异步）
-│   │   ├── retrieval_pipeline.py      # RAG 检索管线（向量检索 + 重排序）
-│   │   ├── context_builder.py         # 对话上下文构建
-│   │   ├── query_optimizer.py         # 查询优化与改写
-│   │   └── rerank.py                  # 结果重排序
-│   │
-│   ├── utils/                         # 工具模块
-│   │   ├── security.py                # JWT 生成/验证、密码哈希
-│   │   ├── dependencies.py            # FastAPI 依赖注入（get_current_user 等）
-│   │   ├── oss.py                     # 阿里云 OSS 客户端封装
-│   │   ├── minio_client.py            # MinIO 对象存储客户端
-│   │   ├── uploader.py                # 文件上传工具
-│   │   ├── file_loader.py             # 本地文件加载器
-│   │   ├── markitdown_converter.py    # Markitdown 文档转换
+│   ├── rag/                           # ★ RAG 检索增强层
+│   │   ├── embedding.py               # ChromaDB 向量库管理 + 嵌入
+│   │   ├── retrieval_pipeline.py      # 多路检索编排 + 相邻块扩展
+│   │   ├── rerank.py                  # BGE Reranker 重排序
+│   │   ├── query_optimizer.py         # 查询分类与改写
 │   │   ├── splitter.py                # 文档分块策略
-│   │   ├── formatter.py               # 数据格式化工具
-│   │   ├── siliconflow_embedding.py   # SiliconFlow 嵌入模型封装
-│   │   └── siliconflow_media_parser.py # SiliconFlow 多模态解析
+│   │   └── memory.py                  # 对话记忆持久化与检索
 │   │
-│   ├── cache/                         # 缓存层
-│   │   └── redis.py                   # Redis 客户端封装
+│   ├── core/                          # ★ 核心基础设施
+│   │   ├── database/
+│   │   │   ├── session.py             # SQLModel 会话 + 引擎管理
+│   │   │   ├── checkpoints.py         # LangGraph checkpoint 管理
+│   │   │   └── models/                # ORM 模型（8 个）
+│   │   │       ├── user.py / meeting.py / transcription.py
+│   │   │       ├── knowledge.py / knowledge_file.py
+│   │   │       ├── chatmessage.py / chat_session.py / config.py
+│   │   ├── cache/
+│   │   │   └── redis.py               # Redis 客户端封装
+│   │   ├── llm/
+│   │   │   ├── factory.py             # LLM 模型工厂（统一管理各模型初始化）
+│   │   │   └── client.py              # 流式 LLM 客户端
+│   │   └── storage/
+│   │       ├── oss.py                 # 阿里云 OSS 客户端
+│   │       ├── minio.py               # MinIO 对象存储
+│   │       └── uploader.py            # 文件上传工具
+│   │
+│   ├── services/                      # ★ 业务服务层（薄封装）
+│   │   ├── chat_service.py            # 对话服务编排（Agent 调用 + 流式输出）
+│   │   ├── meeting_service.py         # 会议室生命周期管理
+│   │   ├── meeting_callback.py        # 会议结束回调处理
+│   │   ├── audio_service.py           # PCM → WAV → mp3 ffmpeg 音频合并
+│   │   ├── realtime_asr.py            # DashScope 实时 ASR WebSocket
+│   │   ├── dashscope_file_asr.py      # DashScope 文件级语音识别
+│   │   ├── media_parser.py            # 硅基流式多模态解析（语音转录+图片OCR）
+│   │   └── document_service.py        # 文档解析/转换
 │   │
 │   ├── task/                          # Celery 异步任务
 │   │   ├── celery_app.py              # Celery 应用实例
-│   │   └── tasks.py                   # 异步任务（转写 / 知识库文件解析）
+│   │   └── tasks.py                   # 转录任务 + 知识库文件解析
 │   │
-│   ├── langchain_pipeline/            # 早期 LangGraph 原型（待清理，见下文）
-│   │   ├── __init__.py
-│   │   └── agent.py
+│   ├── utils/                         # 通用工具
+│   │   ├── security.py                # JWT 生成/验证、密码哈希
+│   │   ├── file_loader.py             # 本地文件加载器
+│   │   └── formatter.py               # ASR 转录结果格式化
 │   │
 │   ├── sql/                           # 数据库初始化
-│   │   ├── graduation_db.sql          # Navicat 导出的完整建表脚本
-│   │   └── init_db.py                 # 一键初始化脚本（自动建库 + 执行 SQL）
+│   │   ├── graduation_db.sql          # Navicat 完整建表脚本
+│   │   └── init_db.py                 # 一键初始化脚本
+│   │
+│   ├── chroma_db/                     # ChromaDB 向量库持久化目录（运行时生成）
+│   └── data/                          # 本地音频数据（运行时生成）
 │
 │
 ├── frontend/                          # Vue3 + Vite + TS 前端
-│   ├── package.json                   # 依赖与脚本
-│   ├── vite.config.ts                 # Vite 配置（proxy /api → :31818，含 WebSocket）
-│   ├── tsconfig.json / tsconfig.node.json
-│   ├── tsconfig.app.json
-│   ├── index.html                     # Vite 入口 HTML
-│   ├── .env.development               # VITE_API_TARGET=http://localhost:31818
-│   ├── .env.production                # 生产环境（同源部署）
-│   ├── TECH_STACK.md                  # 前端技术选型详述
 │   └── src/
 │       ├── main.ts                    # 应用入口（挂载 Vue、Pinia、Router）
 │       ├── App.vue                    # 根组件
@@ -350,21 +380,162 @@ npm run build
 
 ## 核心模块说明
 
-### 后端服务层 (service/)
+### Agent 核心层 (agent/)
+
+后端的核心是 **Agent 标准架构**，将 LLM 编排逻辑从业务层剥离，形成独立的 Agent 层。
+
+| Agent | 图文件 | 节点数 | 说明 |
+|---|---|---|---|
+| **ChatAgent** | `agent/chat/agent.py` | 6 (router → 三路检索 → builder → llm) | RAG 对话，支持四级降级兜底，流式 SSE 输出 |
+| **MeetingAgent** | `agent/meeting/agent.py` | 5 (llm → tool → llm → 并行三节点) | 语音→ASR识别→纠错润色→并行输出纪要/行动项/主题分段 |
+
+每个 Agent 内部按 **state / nodes / prompts / tools** 独立拆分，节点通过闭包注入模型，提示词集中管理。
+
+### RAG 检索层 (rag/)
 
 | 模块 | 职责 |
 |---|---|
-| `llm_graph_service.py` | LangGraph 纪要生成主流程：ASR 文本 → 内容提炼 → 结构化纪要输出 |
-| `llm_service.py` | 统一 LLM 调用封装，支持多模型切换（DashScope / OpenAI / SiliconFlow） |
-| `meeting_manager.py` | 会议室生命周期管理：创建房间、加入/离开、WebSocket 信令转发 |
-| `meeting_callback.py` | 会议结束后的回调链：触发音频合并 → OSS 上传 → Celery 转写任务 |
-| `audio_merger.py` | 多路 PCM 音频合并为 mp3（ffmpeg amix + adelay） |
-| `realtime_asr.py` | DashScope 实时语音识别 WebSocket 客户端，流式返回转写结果 |
+| `embedding.py` | ChromaDB 向量库管理 + 硅基流动 Embedding 模型封装 |
+| `retrieval_pipeline.py` | 多路检索编排：按意图类型切换检索策略 + 相邻块扩展 |
+| `rerank.py` | BGE Reranker 重排序，提升召回相关性 |
+| `query_optimizer.py` | 查询分类与改写 |
+| `splitter.py` | 文档分块策略（文本/音频/图片） |
+| `memory.py` | 对话记忆持久化（ChromaDB）+ 历史检索 |
+
+### 业务服务层 (services/)
+
+| 模块 | 职责 |
+|---|---|
+| `chat_service.py` | 对话服务编排（Agent 调用 + 流式输出 + 消息持久化） |
+| `meeting_service.py` | 会议室生命周期管理：创建/加入/离开/WebSocket 信令 |
+| `meeting_callback.py` | 会议结束回调链：音频合并 → OSS 上传 → Celery 转写任务 |
+| `audio_service.py` | 多路 PCM 音频合并为 mp3（ffmpeg amix + adelay） |
+| `realtime_asr.py` | DashScope 实时语音识别 WebSocket 客户端 |
 | `dashscope_file_asr.py` | DashScope 文件级语音识别（异步提交 + 轮询结果） |
-| `retrieval_pipeline.py` | RAG 检索管线：用户提问 → 向量检索 → 重排序 → 上下文构建 |
-| `context_builder.py` | 对话历史与知识库上下文整合 |
-| `query_optimizer.py` | 用户查询改写与优化（提升检索精度） |
-| `rerank.py` | 检索结果重排序（提升召回相关性） |
+| `media_parser.py` | 硅基流式多模态解析（语音转录 + 图片 OCR） |
+| `document_service.py` | 文档格式转换（Markitdown + 多格式支持） |
+
+### 核心基础设施 (core/)
+
+| 子模块 | 说明 |
+|---|---|
+| `core/database/` | SQLModel ORM（8 个模型）+ 会话管理 + LangGraph checkpoint |
+| `core/cache/` | Redis 客户端封装（缓存 + Celery 消息队列） |
+| `core/llm/` | LLM 模型工厂 + 流式客户端统一管理 |
+| `core/storage/` | OSS / MinIO / 文件上传 |
+
+## LangGraph 工作流
+
+后端两个 Agent 均使用 LangGraph `StateGraph` 构建，通过 TypedDict + `operator.add` 管理状态、条件边实现分支路由。
+
+### ChatAgent —— RAG 对话图
+
+```
+                        ┌──────────────────────────┐
+                        │          START            │
+                        └────────────┬─────────────┘
+                                     │
+                                     ▼
+                        ┌──────────────────────────┐
+                        │        router             │
+                        │  意图分类 (结构化输出)      │
+                        │  summary/action/topic/    │
+                        │  detail/multi             │
+                        └────────────┬─────────────┘
+                                     │ _route_from_router
+                    ┌────────────────┼────────────────┐
+                    ▼                ▼                ▼ (if need_kb)
+        ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
+        │ meeting_retrieval│ │ memory_retrieval │ │knowledge_retrieval│
+        │ 会议库多路检索     │ │ 历史记忆检索      │ │ 知识库检索        │
+        │ + 相邻块扩展      │ │ + keyword 多查    │ │ + 多collection    │
+        │ + BGE rerank     │ │ + BGE rerank     │ │ + BGE rerank     │
+        └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
+                 │                    │                    │
+                 └────────────────────┼────────────────────┘
+                                      │
+                                      ▼
+                        ┌──────────────────────────┐
+                        │    context_builder        │
+                        │  汇合三路检索结果           │
+                        │  四级降级判定 (L0~L3)      │
+                        └────────────┬─────────────┘
+                                     │
+                                     ▼
+                        ┌──────────────────────────┐
+                        │        llm_call           │
+                        │  System + 上下文 + 历史    │
+                        │  流式 SSE 输出             │
+                        └────────────┬─────────────┘
+                                     │
+                                     ▼
+                        ┌──────────────────────────┐
+                        │           END             │
+                        └──────────────────────────┘
+```
+
+**State: `ChatState`** (15 字段，`messages` 用 `operator.add` 追加)
+
+| 节点 | 功能 |
+|---|---|
+| `router` | 用低温度 Router 模型做结构化意图分类，输出 intent/keywords/speaker/topic；异常时关键词兜底 |
+| `meeting_retrieval` | 按 query_type 切换检索策略（概括性→summary/theme_seg，行动项→action_items，细节性→全量），BGE Reranker 重排序 |
+| `memory_retrieval` | 从 ChromaDB 记忆库逐 keyword 检索 + 去重合并 |
+| `knowledge_retrieval` | 逐 kb_id 多 collection 检索 + 重排序 |
+| `context_builder` | 汇合三路结果，判定 fallback_level（L0 全命中 → L3 无回答），生成 user_notice |
+| `llm_call` | 拼接 System 提示词 + 会议内容 + 知识库片段 + 历史记录 + 降级提示词，流式输出 |
+
+### MeetingAgent —— 会议纪要生成图
+
+```
+                        ┌──────────────────────────┐
+                        │          START            │
+                        └────────────┬─────────────┘
+                                     │
+                                     ▼
+                        ┌──────────────────────────┐
+                        │        llm_call           │  ←──────┐
+                        │  纠错润色 (with tools)     │         │
+                        │  model.bind_tools([asr])  │         │
+                        └────────────┬─────────────┘         │
+                                     │ _should_continue      │
+                          ┌──────────┴──────────┐            │
+                          │ tool_calls?          │            │
+                          └──────────┬──────────┘            │
+                     Yes              │              No       │
+                          ▼           │              ▼        │
+          ┌──────────────────┐        │   ┌──────────────────┐│
+          │    tool_node      │────────┘   │ [summary,        ││
+          │  ASR 语音识别     │             │  get_action,     ││
+          │  返回转录文本      │             │  theme_seg]      ││
+          └──────────────────┘             │  并行三节点        ││
+                                           └────────┬─────────┘│
+                                                    │          │
+                                     ┌──────────────┼──────┐   │
+                                     ▼              ▼      ▼   │
+                           ┌──────────┐  ┌──────────┐ ┌──────────┐
+                           │ summary  │  │get_action│ │  theme   │
+                           │ 会议总结  │  │ 行动项   │ │_seg      │
+                           │          │  │ 提取     │ │ 主题分段 │
+                           └────┬─────┘  └────┬─────┘ └────┬─────┘
+                                │             │            │
+                                └─────────────┼────────────┘
+                                              │
+                                              ▼
+                                ┌──────────────────────────┐
+                                │           END             │
+                                └──────────────────────────┘
+```
+
+**State: `MeetingState`** (4 字段，`messages` 和 `result` 均用 `operator.add` 保证并行节点结果合并)
+
+| 节点 | 功能 |
+|---|---|
+| `llm_call` | 模型绑定 ASR 工具，首轮输出 tool_calls 触发语音识别；二轮进行文本纠错润色 |
+| `tool_node` | 执行 `asr` 工具：DashScope 文件级语音识别 → 转录文本格式化 |
+| `summary` | 基于润色后文本 + 带时间戳的句子生成结构化会议总结 |
+| `get_action` | 提取待办事项 / 行动项 / 责任人 |
+| `theme_segmentation` | 按主题对会议内容进行分段，标注时间范围 |
 
 ### 前端核心页面
 
@@ -413,8 +584,8 @@ npm run build
 
 ## 分支说明
 
-- `main`：稳定分支
-- `chain_update`：主开发分支（当前活跃）
+- `main`：稳定分支（已并入最新重构）
+- `chain_update`：主开发分支（活跃）
 
 ## License
 
