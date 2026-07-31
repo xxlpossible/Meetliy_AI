@@ -17,8 +17,10 @@ echo "========================================"
 echo "[1/3] Waiting for MySQL to be ready..."
 
 # 用 grep + sed 从 config.yaml 解析 host 和 port
-# config.yaml 格式: "mysql+pymysql://root:xxx@mysql:3306/graduation_db?..."
-DB_URL=$(grep 'database_url' /app/config.yaml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+# config.yaml 格式:
+#   database_url:
+#     "mysql+pymysql://root:xxx@mysql:3306/graduation_db?..."
+DB_URL=$(grep -A1 'database_url' /app/config.yaml | tail -1 | sed 's/.*"\(.*\)".*/\1/')
 DB_HOST=$(echo "$DB_URL" | sed 's/.*@\([^:]*\):.*/\1/')
 DB_PORT=$(echo "$DB_URL" | sed 's/.*:\([0-9]*\)\/.*/\1/')
 
