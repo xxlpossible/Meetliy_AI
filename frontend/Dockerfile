@@ -10,8 +10,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # 安装依赖（利用 Docker 缓存层）
+# 使用淘宝 npm 镜像加速
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm config set registry https://registry.npmmirror.com && npm ci
 
 # 复制源码
 COPY frontend/ .

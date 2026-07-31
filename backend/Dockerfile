@@ -16,8 +16,8 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
     libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 uv（快速 Python 包管理器）
-RUN pip install --no-cache-dir uv
+# 安装 uv（快速 Python 包管理器，使用阿里云 PyPI 镜像）
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
 
 WORKDIR /app
 
