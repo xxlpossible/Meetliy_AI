@@ -46,16 +46,7 @@ echo "  ✓ MySQL is ready after ${RETRY}s"
 
 # ── 2. 初始化数据库表结构 ──
 echo "[2/3] Initializing database tables..."
-
-# 先从 config.yaml 提取数据库名（不受密码特殊字符影响）
-DB_NAME=$(grep -A1 'database_url' /app/config.yaml | tail -1 | sed 's/.*\/\([^?]*\).*/\1/')
-
-# 直接用 mysql 命令行创建数据库和执行 SQL（避免密码中特殊字符的 URL 解析问题）
-mysql -h"$DB_HOST" -P"$DB_PORT" -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
-
-# 执行建表 SQL
-mysql -h"$DB_HOST" -P"$DB_PORT" -uroot -p"$MYSQL_ROOT_PASSWORD" "$DB_NAME" < /app/sql/graduation_db.sql
-
+python sql/init_db.py
 echo "  ✓ Database tables initialized"
 
 # ── 3. 启动 Uvicorn ──

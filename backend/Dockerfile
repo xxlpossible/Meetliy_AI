@@ -14,7 +14,6 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
     && apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libmagic1 \
-    default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 uv（快速 Python 包管理器，使用阿里云 PyPI 镜像）
