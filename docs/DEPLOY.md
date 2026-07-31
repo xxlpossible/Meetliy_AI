@@ -357,6 +357,43 @@ docker compose up -d --build
 
 > **记住一句话**：镜像是图纸，容器是房子，Volume 是保险柜。房子可以拆了重盖，保险柜永远在。
 
+### 3.8 构建加速：国内镜像源配置
+
+由于服务器在国内，Docker 构建时需要从外网下载大量文件（系统包、Python 包、Node 包），**本项目已在所有 Dockerfile 中预置了国内镜像源**，无需手动配置。
+
+**加速覆盖清单**：
+
+| 文件 | 下载内容 | 使用的镜像源 |
+|------|---------|-------------|
+| `backend/Dockerfile` | `apt-get` 系统包（gcc、libmagic） | `mirrors.aliyun.com` |
+| `backend/Dockerfile` | `pip install uv` | `mirrors.aliyun.com/pypi/simple/` |
+| `backend/Dockerfile` | `uv sync` Python 依赖 | `mirrors.aliyun.com/pypi/simple/` |
+| `frontend/Dockerfile` | `npm ci` Node.js 依赖 | `registry.npmmirror.com` |
+
+**基础镜像（mysql、redis、python、node、nginx）**：由于 Docker Hub 拉取较慢，建议先用镜像代理站手动拉取到服务器，避免构建时卡住（详见第 4.3 节）。
+
+**关键代码位置**（供后续维护参考）：
+
+```dockerfile
+# backend/Dockerfile 第 13 行 — apt 系统包加速
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && ...
+
+# backend/Dockerfile 第 20 行 — pip 加速
+RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ uv
+
+# backend/Dockerfile 第 29 行 — uv/Python 依赖加速
+RUN uv sync --frozen --no-dev --index-url https://mirrors.aliyun.com/pypi/simple/
+
+# frontend/Dockerfile 第 15 行 — npm 加速
+RUN npm config set registry https://registry.npmmirror.com && npm ci
+```
+
+> ⚠️ 如果未来某个镜像源失效，替换为其他国内源即可：
+> - apt：`mirrors.tuna.tsinghua.edu.cn`（清华）
+> - pip：`https://pypi.tuna.tsinghua.edu.cn/simple/`
+> - npm：`https://registry.npmmirror.com`
+
 ---
 
 ## 4. 安装 Docker 环境
