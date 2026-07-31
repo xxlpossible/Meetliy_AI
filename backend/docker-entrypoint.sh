@@ -15,37 +15,35 @@ echo "========================================"
 
 # ── 1. 等待 MySQL 就绪 ──
 echo "[1/3] Waiting for MySQL to be ready..."
-# 从 config.yaml 解析数据库连接参数
-DB_URL=$(python -c "
-import yaml, re, os
-raw = open('config.yaml').read()
-raw = re.sub(r'\\$\\{(\\w+)(?::-([^}]*))?\\}', lambda m: os.getenv(m.group(1), m.group(2) or ''), raw)
-cfg = yaml.safe_load(raw)
-print(cfg.get('database_url', ''))
-")
 
-# 解析 host 和 port
-DB_HOST=$(echo "$DB_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-DB_PORT=$(echo "$DB_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+# 用 grep + sed 从 config.yaml 解析 host 和 port
+# config.yaml 格式: "mysql+pymysql://root:xxx@mysql:3306/graduation_db?..."
+DB_URL=$(grep 'database_url' /app/config.yaml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+DB_HOST=$(echo "$DB_URL" | sed 's/.*@\([^:]*\):.*/\1/')
+DB_PORT=$(echo "$DB_URL" | sed 's/.*:\([0-9]*\)\/.*/\1/')
 
 echo "  MySQL target: ${DB_HOST}:${DB_PORT}"
 
-# 使用 Python 等待端口可用
-python -c "
-import socket, time, sys
-host, port = '$DB_HOST', int('$DB_PORT')
-for i in range(60):
-    try:
-        s = socket.create_connection((host, port), timeout=2)
-        s.close()
-        print(f'  ✓ MySQL is ready after {i+1}s')
+# 使用 /dev/tcp 或 Python 等待端口可用
+for i in $(seq 1 60); do
+    if python -c "
+import socket
+try:
+    s = socket.create_connection(('$DB_HOST', int('$DB_PORT')), timeout=2)
+    s.close()
+    exit(0)
+except:
+    exit(1)
+" 2>/dev/null; then
+        echo "  ✓ MySQL is ready after ${i}s"
         break
-    except (socket.error, OSError):
-        time.sleep(1)
-else:
-    print('  ✗ MySQL did not become ready in 60s')
-    sys.exit(1)
-"
+    fi
+    if [ "$i" -eq 60 ]; then
+        echo "  ✗ MySQL did not become ready in 60s"
+        exit 1
+    fi
+    sleep 1
+done
 
 # ── 2. 初始化数据库表结构 ──
 echo "[2/3] Initializing database tables..."
