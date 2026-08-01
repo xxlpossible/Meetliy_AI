@@ -1,47 +1,100 @@
-# Python
+# ============================================================
+# .dockerignore — 控制 docker build context 大小
+# 与 .gitignore 对齐，排除本地开发/缓存/运行时生成的文件，
+# 避免将不必要的文件打包进镜像。
+#
+# ⚠️ 重要约束（已逐一核对 Dockerfile 与运行时依赖）：
+#   - context 为项目根（docker-compose 中 context: .）
+#   - 必须保留 backend/ frontend/ nginx/ 目录及其构建/运行必需文件：
+#       backend/pyproject.toml, uv.lock, config.yaml, main.py, settings.py,
+#       app/ core/ services/ rag/ agent/ utils/ sql/, docker-entrypoint.sh
+#       frontend/src/, index.html, vite.config.*, package.json,
+#       package-lock.json, .env.production, nginx/nginx.conf
+#   - 因此下方所有规则都不应命中上述文件。
+# ============================================================
+
+# ===== Python (backend) 缓存与虚拟环境 =====
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
+.Python
 *.egg-info/
-dist/
-build/
+.eggs/
 *.egg
-.venv/
-venv/
-.env
-*.db
+backend/.venv/
+backend/venv/
+backend/env/
 
-# IDE
+# ===== Python 工具缓存 / 测试产物 =====
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# ===== 运行时生成的数据（镜像内由 Dockerfile 创建空目录）=====
+**/chroma_db/
+backend/data/
+backend/checkpoints.db
+backend/*.db
+backend/*.sqlite3
+backend/test
+
+# ===== Node.js (frontend) 构建产物与缓存 =====
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.local
+frontend/auto-imports.d.ts
+frontend/components.d.ts
+coverage/
+*.tsbuildinfo
+
+# ===== 环境变量与密钥 =====
+# .env 由 docker-compose 的 env_file 注入，无需打包进镜像
+.env
+.env.local
+.env.*.local
+# 注意：不排除 .env.production —— frontend/.env.production 是前端构建必需
+#（frontend/Dockerfile 显式 COPY），dockerignore 的 basename 匹配会误伤它；
+# 根目录 .env.production 为配置模板，体积很小，保留在 context 中无害。
+
+# ===== IDE / 编辑器 =====
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-# Git
+# ===== 设计稿与文档（不打包进镜像）=====
+design/
+docs/
+
+# ===== 工具元数据 =====
+.workbuddy/
+.agents/
+.codebuddy/
+
+# ===== Git =====
 .git/
 .gitignore
 
-# Node
-node_modules/
-npm-debug.log*
-
-# ChromaDB 持久化数据（运行时挂载 volume）
-chroma_db/
-
-# 后端数据库文件
-*.sqlite3
-*.sqlite
-
-# 上传文件
-uploads/
-temp/
-
-# OS
+# ===== 系统 / 临时 =====
 .DS_Store
 Thumbs.db
+nul
+*.bak
+*.log
+*.tmp
 
-# Docker
+# ===== Docker 相关 =====
 Dockerfile
 docker-compose*.yml
 .dockerignore
