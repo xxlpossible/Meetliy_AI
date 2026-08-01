@@ -148,11 +148,16 @@ class ChromaDBManager:
     def get_by_file_id_and_knowledge_id(self, file_id: str, knowledge_id: str):
         collection_name = f"collection_kb_{knowledge_id}"
         collection = self.get_or_create_collection(collection_name)
+        # 先获取集合总数，再用 where 条件过滤
+        total = collection.count()
+        if total == 0:
+            logger.info(f"集合 {collection_name} 为空")
+            return {"ids": [], "documents": [], "metadatas": []}
         results = collection.get(
-            where={"file_id": file_id},
+            where={"file_id": {"$eq": file_id}},
             include=["documents", "metadatas"]
         )
-        logger.info(f"已从集合 {collection_name} 查询文件片段: {file_id}")
+        logger.info(f"已从集合 {collection_name} 查询文件片段: {file_id}, 结果数: {len(results.get('ids', []))}")
         return results
 
     def get_by_chunk_index_range(
@@ -215,7 +220,7 @@ class ChromaDBManager:
 
         # 使用 where 条件直接删除
         collection.delete(
-            where={"file_id": file_id}
+            where={"file_id": {"$eq": file_id}}
         )
         logger.info(f"已从集合 {collection_name} 中删除 file_id={file_id} 的所有向量")
 
@@ -236,7 +241,7 @@ class ChromaDBManager:
 
         # 使用 where 条件删除 session_id 匹配的文档
         collection.delete(
-            where={"session_id": session_id}
+            where={"session_id": {"$eq": session_id}}
         )
         logger.info(f"已从集合 {collection_name} 中删除 session_id={session_id} 的所有向量")
 
