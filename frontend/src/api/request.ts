@@ -73,7 +73,9 @@ request.interceptors.response.use(
     if (error.response?.status !== 401 || originalRequest._retry) {
       // 提取后端错误信息
       const detail = error.response?.data?.detail || error.response?.data?.status_message
-      if (detail && !error.config?.url?.includes('/auth/')) {
+      // /auth 与 /user 接口的错误由各页面自行提示，避免重复弹窗
+      const isSelfHandled = error.config?.url?.includes('/auth/') || error.config?.url?.includes('/user/')
+      if (detail && !isSelfHandled) {
         ElMessage.error(detail)
       }
       return Promise.reject(error)

@@ -35,6 +35,27 @@ export interface RegisterRequest {
   confirmPassword: string
 }
 
+/** 当前用户资料 */
+export interface UserProfile {
+  id: number
+  username: string
+  /** 头像地址（OSS 公共 URL 或 base64 data URL） */
+  avatar: string | null
+}
+
+/** 更新用户资料请求（仅用户名；头像通过 POST /user/avatar 单独上传） */
+export interface UpdateProfileRequest {
+  username?: string
+  avatar?: string
+}
+
+/** 修改密码请求 */
+export interface ChangePasswordRequest {
+  old_password: string
+  new_password: string
+  confirm_password: string
+}
+
 // ---- 会议 ----
 /** 会议状态枚举 */
 export const MeetingStatus = {
@@ -71,6 +92,7 @@ export interface MeetingStatisticsData {
 export interface Participant {
   id: number
   name: string
+  avatar?: string | null
 }
 
 export interface CreateMeetingData {

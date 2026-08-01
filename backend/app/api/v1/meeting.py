@@ -168,7 +168,7 @@ async def join_meeting(
         for uid in meeting.user_ids:
             u = UserDao.get_by_id(uid)
             if u:
-                active.append({"id": u.id, "name": u.username})
+                active.append({"id": u.id, "name": u.username, "avatar": u.avatar})
 
     return resp_200(data={
         "meeting_id": meeting_id,
@@ -539,6 +539,7 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
             username=username,
             conversation=conversation,
             loop=loop,
+            avatar=user.avatar,
         )
 
         # 向新加入者发送当前房间已有参与者列表
@@ -550,7 +551,7 @@ async def _meeting_websocket_loop(websocket: WebSocket, meeting_id: str, token_p
         })
 
         # 广播加入事件给其他参会者
-        meeting_manager.broadcast_participant_event(meeting_id, user_id, username, joined=True)
+        meeting_manager.broadcast_participant_event(meeting_id, user_id, username, joined=True, avatar=user.avatar)
 
         # 5. 接收循环：同时处理二进制(音频)和文本(信令)
         while True:

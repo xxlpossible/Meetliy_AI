@@ -38,6 +38,7 @@ class ParticipantConnection:
     audio_file_path: str
     join_offset_seconds: float  # 相对会议开始的偏移(秒)，用于 ffmpeg adelay 对齐
     loop: asyncio.AbstractEventLoop  # 该参会者所在的事件循环
+    avatar: str | None = None  # 用户头像（base64 data URL）
 
 
 @dataclass
@@ -106,6 +107,7 @@ class MeetingManager:
         username: str,
         conversation: object,
         loop: asyncio.AbstractEventLoop,
+        avatar: str | None = None,
     ) -> ParticipantConnection:
         """参会者加入房间：打开 PCM 录音文件，计算加入偏移。"""
         room = self.create_room(meeting_id)
@@ -123,6 +125,7 @@ class MeetingManager:
             audio_file_path=audio_file_path,
             join_offset_seconds=join_offset,
             loop=loop,
+            avatar=avatar,
         )
 
         with self._rooms_lock:
@@ -133,6 +136,7 @@ class MeetingManager:
                 "username": username,
                 "audio_file_path": audio_file_path,
                 "join_offset_seconds": join_offset,
+                "avatar": avatar,
             }
 
         logger.info(f"参会者加入会议 {meeting_id}: user_id={user_id} username={username} offset={join_offset:.2f}s")
@@ -179,12 +183,12 @@ class MeetingManager:
         return conn, is_last
 
     def get_participants(self, meeting_id: str) -> list[dict]:
-        """返回房间内当前活跃参会者列表 [{id, name}]。"""
+        """返回房间内当前活跃参会者列表 [{id, name, avatar}]。"""
         with self._rooms_lock:
             room = self._rooms.get(meeting_id)
             if not room:
                 return []
-            return [{"id": c.user_id, "name": c.username}
+            return [{"id": c.user_id, "name": c.username, "avatar": c.avatar}
                     for c in room.participants.values()]
 
     def write_audio_chunk(self, meeting_id: str, user_id: int, data: bytes):
@@ -282,12 +286,12 @@ class MeetingManager:
             self._send_to_participant(conn, message)
 
     def broadcast_participant_event(
-        self, meeting_id: str, user_id: int, username: str, joined: bool
+        self, meeting_id: str, user_id: int, username: str, joined: bool, avatar: str | None = None
     ):
         """广播参会者加入/离开事件。"""
         message = {
             "type": "participant_joined" if joined else "participant_left",
-            "user": {"id": user_id, "name": username},
+            "user": {"id": user_id, "name": username, "avatar": avatar},
         }
         with self._rooms_lock:
             room = self._rooms.get(meeting_id)

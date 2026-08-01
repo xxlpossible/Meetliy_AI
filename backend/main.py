@@ -1,8 +1,8 @@
-import dotenv
+from utils.env import load_project_env
 
-# 必须在所有业务模块导入之前加载 .env，
+# 必须在所有业务模块导入之前加载项目根目录下的 .env，
 # 否则 settings.py 等模块在 import 时无法读取环境变量
-dotenv.load_dotenv(".env")
+load_project_env()
 
 from contextlib import asynccontextmanager
 

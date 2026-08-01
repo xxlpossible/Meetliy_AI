@@ -11,6 +11,7 @@ class UserBase(SQLModel):
     username: str | None = Field(default=None)
     phone_number: str | None = Field(default=None)
     hashed_password: str = Field(nullable=False)  # 加密后的密码
+    avatar: str | None = Field(default=None)  # 头像地址（OSS 公共 URL）
 
 
 class User(UserBase, table=True):
@@ -76,3 +77,32 @@ class UserDao:
             session.commit()
             session.refresh(user)
         return user
+
+    @classmethod
+    def update_profile(cls, user_id: int, username: str | None = None, avatar: str | None = None) -> User | None:
+        """更新用户名 / 头像，返回更新后的用户。"""
+        with session_getter() as session:
+            user = session.get(User, user_id)
+            if not user:
+                return None
+            if username is not None:
+                user.username = username
+            if avatar is not None:
+                user.avatar = avatar
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    @classmethod
+    def update_password(cls, user_id: int, new_password: str) -> bool:
+        """更新用户密码（内部完成哈希）。"""
+        hashed = hash_password(new_password)
+        with session_getter() as session:
+            user = session.get(User, user_id)
+            if not user:
+                return False
+            user.hashed_password = hashed
+            session.add(user)
+            session.commit()
+            return True

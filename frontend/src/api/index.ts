@@ -3,6 +3,7 @@
 // ============================================================
 
 export { authApi } from './modules/auth'
+export { userApi } from './modules/user'
 export { meetingApi } from './modules/meeting'
 export { audioApi } from './modules/audio'
 export { knowledgeApi } from './modules/knowledge'

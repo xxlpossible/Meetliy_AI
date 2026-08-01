@@ -65,6 +65,10 @@ coverage/
 *.sln
 *.txt
 
+# ===== 设计稿与文档（不纳入版本控制）=====
+design/
+docs/
+
 # ===== WorkBuddy / CodeBuddy 工具元数据 =====
 .workbuddy/
 .agents/

@@ -2,12 +2,13 @@ import os
 import re
 
 import yaml
-from dotenv import load_dotenv
 from loguru import logger
 from pydantic_settings import BaseSettings
 
-# 提前加载 .env，确保配置项可被环境变量覆盖（.env 优先于数据库 config 表）
-load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+from utils.env import load_project_env
+
+# 提前加载项目根目录下的 .env（统一本地与服务器），确保配置项可被环境变量覆盖
+load_project_env()
 
 # 各 section 的环境变量前缀与已知字段。
 # known_fields 用于纯 .env 模式（数据库无配置）：即使 section_dict 为空，

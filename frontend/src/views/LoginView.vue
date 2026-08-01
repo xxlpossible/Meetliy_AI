@@ -37,9 +37,27 @@ async function handleLogin() {
 // ========== 注册 ==========
 const registerFormRef = ref<FormInstance>()
 const registerForm = reactive({ username: '', password: '', confirmPassword: '' })
+
+/** 密码规则：8-20 位，且必须同时包含字母和数字 */
+const passwordValidator = (_rule: any, value: string, cb: (err?: Error) => void) => {
+  if (!value) {
+    cb(new Error('请输入密码'))
+    return
+  }
+  if (value.length < 8 || value.length > 20) {
+    cb(new Error('密码长度需为 8-20 位'))
+    return
+  }
+  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
+    cb(new Error('密码必须同时包含字母和数字'))
+    return
+  }
+  cb()
+}
+
 const registerRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  password: [{ validator: passwordValidator, trigger: 'blur' }],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     { validator: (_rule, value, cb) => {
@@ -55,7 +73,13 @@ async function handleRegister() {
   loading.value = true
   try {
     await authStore.register({ username: registerForm.username, password: registerForm.password, confirmPassword: registerForm.confirmPassword })
-    router.push('/dashboard')
+    ElMessage.success('注册成功，请登录')
+    // 清空表单并切换回登录页
+    registerForm.username = ''
+    registerForm.password = ''
+    registerForm.confirmPassword = ''
+    registerFormRef.value?.resetFields()
+    activeTab.value = 'login'
   } catch (e: any) {
     ElMessage.error(e.message || '注册失败，请稍后重试')
   } finally {
@@ -144,7 +168,7 @@ async function handleRegister() {
                 <template #label>
                   <span class="custom-label">密码</span>
                 </template>
-                <el-input v-model="registerForm.password" type="password" placeholder="6-20位，含字母和数字" size="large" show-password />
+                <el-input v-model="registerForm.password" type="password" placeholder="8-20位，含字母和数字" size="large" show-password />
               </el-form-item>
               <el-form-item prop="confirmPassword">
                 <template #label>

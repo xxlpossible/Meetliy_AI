@@ -86,6 +86,11 @@ const isLastParticipant = computed(() => {
   return participants.size <= 1
 })
 
+/** 根据用户 id 从参与者列表获取头像（transcript 中使用） */
+function getAvatar(userId: number): string | null {
+  return participants.get(userId)?.avatar || null
+}
+
 // ---- 复制会议 ID ----
 async function copyMeetingId() {
   try {
@@ -418,7 +423,8 @@ function toggleSidebar() {
           class="participant-pill"
           :class="{ speaking: speakingSpeakers.has(p.id) }"
         >
-          <div class="pill-avatar" :class="`pill-avatar-${p.id % 4}`">
+          <img v-if="p.avatar" :src="p.avatar" class="pill-avatar-img" alt="" />
+          <div v-else class="pill-avatar" :class="`pill-avatar-${p.id % 4}`">
             {{ p.name?.charAt(0) || '?' }}
           </div>
           <span>{{ p.name }}</span>
@@ -439,7 +445,8 @@ function toggleSidebar() {
           class="transcript-line"
         >
           <div class="tl-speaker">
-            <div class="tl-avatar" :class="`tl-avatar-${t.speaker_id % 4}`">
+            <img v-if="getAvatar(t.speaker_id)" :src="getAvatar(t.speaker_id)" class="tl-avatar-img" alt="" />
+            <div v-else class="tl-avatar" :class="`tl-avatar-${t.speaker_id % 4}`">
               {{ t.speaker_name?.charAt(0) || '?' }}
             </div>
             <span class="tl-speaker-name">{{ t.speaker_name }}</span>
@@ -457,7 +464,8 @@ function toggleSidebar() {
           class="transcript-line interim"
         >
           <div class="tl-speaker">
-            <div class="tl-avatar" :class="`tl-avatar-${t.speaker_id % 4}`">
+            <img v-if="getAvatar(t.speaker_id)" :src="getAvatar(t.speaker_id)" class="tl-avatar-img" alt="" />
+            <div v-else class="tl-avatar" :class="`tl-avatar-${t.speaker_id % 4}`">
               {{ t.speaker_name?.charAt(0) || '?' }}
             </div>
             <span class="tl-speaker-name">{{ t.speaker_name }}</span>
@@ -844,6 +852,15 @@ function toggleSidebar() {
 .pill-avatar-2 { background: var(--color-warning); }
 .pill-avatar-3 { background: var(--color-purple); }
 
+.pill-avatar-img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+}
+
 .pill-dot {
   width: 6px;
   height: 6px;
@@ -930,6 +947,14 @@ function toggleSidebar() {
 .tl-avatar-1 { background: var(--color-success); }
 .tl-avatar-2 { background: var(--color-warning); }
 .tl-avatar-3 { background: var(--color-purple); }
+
+.tl-avatar-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
 
 .tl-speaker-name {
   font-size: 11px;

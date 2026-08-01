@@ -5,23 +5,40 @@
 import { request, setTokens } from '../request'
 import type { ApiResponse, TokenData, LoginRequest, RegisterRequest } from '../types'
 
+/** 从错误响应中提取后端返回的错误信息（兼容 FastAPI 422 的数组 detail） */
+function getDetail(e: any): string {
+  const detail = e?.response?.data?.detail
+  if (Array.isArray(detail)) {
+    return detail.map((d: any) => d?.msg).filter(Boolean).join('；')
+  }
+  return detail || e?.response?.data?.status_message || ''
+}
+
 export const authApi = {
   /** 用户登录 */
   async login(data: LoginRequest): Promise<TokenData> {
-    const resp = await request.post<ApiResponse<TokenData>>('/auth/login', data)
-    if (resp.data.status_code === 200) {
-      setTokens(resp.data.data)
-      localStorage.setItem('username', data.username)
-      return resp.data.data
+    try {
+      const resp = await request.post<ApiResponse<TokenData>>('/auth/login', data)
+      if (resp.data.status_code === 200) {
+        setTokens(resp.data.data)
+        localStorage.setItem('username', data.username)
+        return resp.data.data
+      }
+      throw new Error(resp.data.status_message)
+    } catch (e: any) {
+      throw new Error(getDetail(e) || e.message || '登录失败，请稍后重试')
     }
-    throw new Error(resp.data.status_message)
   },
 
   /** 用户注册 */
   async register(data: RegisterRequest): Promise<void> {
-    const resp = await request.post<ApiResponse<null>>('/auth/register', data)
-    if (resp.data.status_code !== 200) {
-      throw new Error(resp.data.status_message)
+    try {
+      const resp = await request.post<ApiResponse<null>>('/auth/register', data)
+      if (resp.data.status_code !== 200) {
+        throw new Error(resp.data.status_message)
+      }
+    } catch (e: any) {
+      throw new Error(getDetail(e) || e.message || '注册失败，请稍后重试')
     }
   },
 

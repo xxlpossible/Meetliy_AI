@@ -88,8 +88,8 @@ class UserRegister(SQLModel):
         if v is None or not str(v).strip():
             raise ValueError("密码不能为空")
         v = str(v)
-        if len(v) < 6 or len(v) > 20:
-            raise ValueError("密码长度需为 6-20 位")
+        if len(v) < 8 or len(v) > 20:
+            raise ValueError("密码长度需为 8-20 位")
         if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
             raise ValueError("密码必须同时包含字母和数字")
         return v
@@ -105,6 +105,56 @@ class UserRegister(SQLModel):
 class RefreshTokenRequest(SQLModel):
     """Token 刷新请求体"""
     refresh_token: str = Field(description="登录时签发的 Refresh Token")
+
+
+class UserProfileUpdate(SQLModel):
+    """更新用户资料请求体（用户名）"""
+    username: str | None = Field(default=None, description="新用户名")
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v):
+        if v is None:
+            return v
+        v = str(v).strip()
+        if not v:
+            raise ValueError("用户名不能为空")
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]{2,19}$", v):
+            raise ValueError("用户名需 3-20 位，以字母开头，仅含字母、数字、下划线")
+        return v
+
+
+class PasswordChange(SQLModel):
+    """修改密码请求体"""
+    old_password: str | None = Field(default=None, description="原密码")
+    new_password: str | None = Field(default=None, description="新密码")
+    confirm_password: str | None = Field(default=None, description="确认新密码")
+
+    @field_validator("old_password")
+    @classmethod
+    def old_not_blank(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("原密码不能为空")
+        return v
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("新密码不能为空")
+        v = str(v)
+        if len(v) < 8 or len(v) > 20:
+            raise ValueError("新密码长度需为 8-20 位")
+        if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+            raise ValueError("新密码必须同时包含字母和数字")
+        return v
+
+    @field_validator("confirm_password")
+    @classmethod
+    def confirm_not_blank(cls, v):
+        if v is None or not str(v).strip():
+            raise ValueError("确认新密码不能为空")
+        return v
 
 
 class KnowledgeCreate(SQLModel):

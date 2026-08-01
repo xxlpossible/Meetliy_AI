@@ -10,13 +10,13 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from passlib.context import CryptContext
 
-# 提前加载 .env，确保本模块在 import 时即可读取到 JWT 配置
-# （main.py 的 load_dotenv 执行较晚，这里以本文件位置定位 backend/.env）
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
+from utils.env import load_project_env
+
+# 提前加载项目根目录下的 .env（统一本地与服务器），确保本模块在 import 时即可读取到 JWT 配置
+load_project_env()
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 

@@ -44,18 +44,22 @@ function confirmLogout() {
           :class="{ active: route.name?.toString().startsWith(item.name) }"
           @click="router.push({ name: item.name })"
         >
+          <el-icon class="nav-icon" :size="17">
+            <component :is="item.icon" />
+          </el-icon>
           <span>{{ item.label }}</span>
         </button>
       </nav>
 
       <div class="topbar-user">
-        <div class="user-info">
-          <div class="user-name">{{ auth.username || '用户' }}</div>
-          <div class="user-role">会议参与者</div>
+        <div class="user-avatar-wrap" title="个人中心" @click="router.push('/profile')">
+          <img v-if="auth.avatar" :src="auth.avatar" class="user-avatar-img" alt="头像" />
+          <div v-else class="user-avatar">{{ auth.username?.charAt(0) || '?' }}</div>
+          <span class="user-name">{{ auth.username || '用户' }}</span>
         </div>
-        <div class="user-avatar">{{ auth.username?.charAt(0) || '?' }}</div>
         <button class="logout-btn" title="退出登录" @click="handleLogout">
           <el-icon><SwitchButton /></el-icon>
+          <span class="logout-text">退出</span>
         </button>
       </div>
     </header>
@@ -105,12 +109,13 @@ function confirmLogout() {
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  margin-right: $space-6;
 }
 
 .topbar-logo {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: 10px;
   background: linear-gradient(135deg, var(--color-amber-400), var(--color-amber-500));
   display: flex;
   align-items: center;
@@ -119,6 +124,7 @@ function confirmLogout() {
   color: var(--color-stone-900);
   font-weight: 700;
   font-family: var(--font-display);
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.35);
 }
 
 .topbar-name {
@@ -126,87 +132,153 @@ function confirmLogout() {
   font-weight: 700;
   font-size: 20px;
   color: var(--color-stone-800);
+  letter-spacing: 0.01em;
 }
 
+// ============================================================
+// 导航 — 置于品牌与用户区之间，自动居中留白
+// ============================================================
 .topbar-nav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: $space-4;
+  height: 100%;
 }
 
 .nav-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 6px;
+  padding: 0 14px;
   border: none;
   background: transparent;
-  color: var(--color-stone-600);
-  font-size: 14px;
+  color: var(--color-stone-500);
+  font-size: 15px;
   font-weight: 500;
   font-family: var(--font-body);
   cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  height: 100%;
+  position: relative;
+  transition: color var(--transition-fast);
+
+  // 底部激活指示条
+  &::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 3px;
+    border-radius: $radius-full;
+    background: var(--color-amber-400);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform var(--transition-normal);
+  }
+
+  .nav-icon {
+    transition: transform var(--transition-fast);
+  }
 
   &:hover {
-    background: var(--color-stone-100);
     color: var(--color-stone-800);
+
+    .nav-icon {
+      transform: translateY(-1px);
+    }
   }
 
   &.active {
-    background: var(--color-amber-50);
     color: var(--color-amber-600);
+    font-weight: 600;
+
+    &::after {
+      transform: scaleX(1);
+    }
   }
 }
 
+// ============================================================
+// 用户区
+// ============================================================
 .topbar-user {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: $space-2;
+  margin-left: auto;
 }
 
-.user-info {
-  line-height: 1.3;
-  text-align: right;
+.user-avatar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 6px 12px 6px 6px;
+  border-radius: $radius-full;
+  border: 1.5px solid transparent;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--color-stone-50);
+    border-color: var(--color-amber-200);
+  }
+}
+
+.user-avatar,
+.user-avatar-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.user-avatar {
+  background: linear-gradient(135deg, var(--color-stone-200), var(--color-stone-300));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-stone-600);
+  font-family: var(--font-display);
+}
+
+.user-avatar-img {
+  object-fit: cover;
+  display: block;
 }
 
 .user-name {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-stone-800);
-}
-
-.user-role {
-  font-size: 12px;
-  color: var(--color-stone-400);
-}
-
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-stone-200);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-stone-600);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .logout-btn {
-  width: 32px;
-  height: 32px;
+  height: 34px;
+  padding: 0 14px;
   border: none;
   background: transparent;
   color: var(--color-stone-400);
   cursor: pointer;
-  border-radius: var(--radius-md);
-  display: flex;
+  border-radius: $radius-full;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
   transition: all var(--transition-fast);
+
+  .logout-text {
+    display: none;
+  }
 
   &:hover {
     background: #fef2f2;
@@ -222,8 +294,33 @@ function confirmLogout() {
   .topbar {
     padding: 0 $space-4;
   }
-  .user-info {
+
+  .user-avatar-wrap {
+    .user-name {
+      display: none;
+    }
+  }
+
+  .logout-btn {
+    .logout-text {
+      display: none;
+    }
+  }
+
+  .nav-btn {
+    padding: 0 12px;
+  }
+}
+
+@include respond-to(sm) {
+  .topbar-brand .topbar-name {
     display: none;
+  }
+
+  .topbar-nav {
+    position: static;
+    transform: none;
+    margin: 0 auto;
   }
 }
 </style>
