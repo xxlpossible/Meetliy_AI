@@ -96,6 +96,9 @@ services:
     mem_reservation: 256m
     volumes:
       - ./backend/config.yaml:/app/config.yaml:ro
+      # ChromaDB 向量库：必须与 backend 共用同一卷，否则 Celery 写入的向量
+      # backend 查询不到（两个进程会各自使用独立的持久化目录）
+      - chroma_data:/app/chroma_db
       - uploads_data:/app/uploads
       - knowledge_uploads_data:/app/data/knowledge_uploads
       - meeting_audio_data:/app/data/meeting_audio
