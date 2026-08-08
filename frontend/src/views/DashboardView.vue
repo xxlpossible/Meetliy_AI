@@ -10,8 +10,10 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { meetingApi } from '@/api'
 import type { MeetingItem, MeetingStatusItem, MeetingStatisticsData } from '@/api/types'
 import { MeetingStatus } from '@/api/types'
+import { useAuthStore } from '@/stores'
 
 const router = useRouter()
+const auth = useAuthStore()
 
 // ---- 状态 ----
 const loading = ref(false)     // 首次加载（无数据时的全屏骨架）
@@ -34,7 +36,7 @@ const deleteTarget = ref<MeetingItem | null>(null)
 // ---- 创建会议弹窗 ----
 const createDialogVisible = ref(false)
 const createMeetingName = ref('')
-const createNeedSummary = ref(true)
+const createNeedSummary = ref(false)
 const createLoading = ref(false)
 
 // ---- 自动轮询 ----
@@ -101,7 +103,9 @@ async function loadData() {
   }
 
   try {
-    const listData = await meetingApi.list(currentPage.value, pageSize.value, searchKeyword.value || undefined)
+    // 将前端筛选映射为后端 status 参数
+    const statusParam = filterToStatus(activeFilter.value)
+    const listData = await meetingApi.list(currentPage.value, pageSize.value, searchKeyword.value || undefined, statusParam)
 
     // 先赋值列表，确保 refreshStatuses 读取的是新 ID
     meetingList.value = listData.data
@@ -128,6 +132,22 @@ async function loadData() {
 /** 搜索 */
 function handleSearch() {
   searchKeyword.value = searchInput.value.trim()
+  currentPage.value = 1
+  loadData()
+}
+
+/** 将前端筛选映射为后端 status 参数 */
+function filterToStatus(filter: string): number | undefined {
+  if (filter === 'active') return MeetingStatus.ACTIVE         // 0
+  if (filter === 'analyzing') return MeetingStatus.END_AND_ANALYZE // 1
+  if (filter === 'finish') return MeetingStatus.FINISH          // 2
+  if (filter === 'error') return MeetingStatus.ERROR            // -1
+  return undefined // 'all' → 不传 status，由后端返回全部
+}
+
+/** 切换筛选并重新加载 */
+function setActiveFilter(filter: string) {
+  activeFilter.value = filter
   currentPage.value = 1
   loadData()
 }
@@ -243,7 +263,7 @@ function handleCardClick(m: MeetingItem) {
 // ---- 快速操作 ----
 function handleCreateMeeting() {
   createMeetingName.value = ''
-  createNeedSummary.value = true
+  createNeedSummary.value = false
   createDialogVisible.value = true
 }
 
@@ -292,8 +312,37 @@ onUnmounted(stopPolling)
 <template>
   <DefaultLayout>
     <div class="dashboard">
-      <!-- ========== 页头 ========== -->
-      <div class="page-header">
+      <!-- ========== 移动端英雄区（仅小屏显示，参照 mobile-responsive 设计） ========== -->
+      <div class="mobile-hero">
+        <div class="dashboard-greeting">
+          早上好<span v-if="auth.username">，{{ auth.username }}</span>
+        </div>
+        <div class="dashboard-subtitle">今天有 {{ stats.active }} 场会议待处理</div>
+        <div class="dashboard-quick-actions">
+          <button type="button" class="quick-action-btn quick-action-primary" @click="handleCreateMeeting">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            新建会议
+          </button>
+          <button type="button" class="quick-action-btn quick-action-secondary" @click="joinDialogVisible = true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/></svg>
+            加入
+          </button>
+          <el-upload
+            class="quick-action-upload"
+            :show-file-list="false"
+            :before-upload="handleUploadAudio"
+            accept=".mp3,.wav,.m4a,.ogg,.flac"
+          >
+            <button type="button" class="quick-action-btn quick-action-secondary" :disabled="loading">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5"/><polyline points="5 12 12 5 19 12"/></svg>
+              上传
+            </button>
+          </el-upload>
+        </div>
+      </div>
+
+      <!-- ========== 页头（桌面/平板显示） ========== -->
+      <div class="page-header desktop-only">
         <div>
           <h1 class="page-title">会议工作空间</h1>
           <p class="page-subtitle">管理您的会议记录、追踪处理进度</p>
@@ -317,22 +366,22 @@ onUnmounted(stopPolling)
 
       <!-- ========== 仪表盘统计 ========== -->
       <div class="stats-row">
-        <div class="stat-card stat-card-total" @click="activeFilter = 'all'">
+        <div class="stat-card stat-card-total" @click="setActiveFilter('all')">
           <div class="stat-icon stat-icon-amber">📋</div>
           <div class="stat-value">{{ stats.total }}</div>
           <div class="stat-label">全部会议</div>
         </div>
-        <div class="stat-card stat-card-finish" @click="activeFilter = 'finish'">
+        <div class="stat-card stat-card-finish" @click="setActiveFilter('finish')">
           <div class="stat-icon stat-icon-green">✅</div>
           <div class="stat-value">{{ stats.finish }}</div>
           <div class="stat-label">解析完成</div>
         </div>
-        <div class="stat-card stat-card-analyzing" @click="activeFilter = 'analyzing'">
+        <div class="stat-card stat-card-analyzing" @click="setActiveFilter('analyzing')">
           <div class="stat-icon stat-icon-blue">⏳</div>
           <div class="stat-value">{{ stats.analyzing }}</div>
           <div class="stat-label">解析中</div>
         </div>
-        <div class="stat-card stat-card-error" @click="activeFilter = 'error'">
+        <div class="stat-card stat-card-error" @click="setActiveFilter('error')">
           <div class="stat-icon stat-icon-red">⚠</div>
           <div class="stat-value">{{ stats.error }}</div>
           <div class="stat-label">解析异常</div>
@@ -366,35 +415,35 @@ onUnmounted(stopPolling)
             <button
               class="filter-tab"
               :class="{ active: activeFilter === 'all' }"
-              @click="activeFilter = 'all'"
+              @click="setActiveFilter('all')"
             >
               全部
             </button>
             <button
               class="filter-tab"
               :class="{ active: activeFilter === 'active' }"
-              @click="activeFilter = 'active'"
+              @click="setActiveFilter('active')"
             >
               进行中
             </button>
             <button
               class="filter-tab"
               :class="{ active: activeFilter === 'analyzing' }"
-              @click="activeFilter = 'analyzing'"
+              @click="setActiveFilter('analyzing')"
             >
               解析中
             </button>
             <button
               class="filter-tab"
               :class="{ active: activeFilter === 'finish' }"
-              @click="activeFilter = 'finish'"
+              @click="setActiveFilter('finish')"
             >
               已完成
             </button>
             <button
               class="filter-tab"
               :class="{ active: activeFilter === 'error' }"
-              @click="activeFilter = 'error'"
+              @click="setActiveFilter('error')"
             >
               异常
             </button>
@@ -419,7 +468,7 @@ onUnmounted(stopPolling)
           </p>
           <el-button
             v-if="activeFilter !== 'all'"
-            @click="activeFilter = 'all'"
+            @click="setActiveFilter('all')"
             type="primary"
             plain
             >查看全部</el-button
@@ -452,10 +501,17 @@ onUnmounted(stopPolling)
               </span>
             </div>
 
-            <h3 class="card-title">{{ item.meeting_name || '未命名会议' }}</h3>
+            <div class="card-main">
+              <div class="card-avatar" :class="getStatusInfo(item).type === 'error' ? 'stone' : 'amber'">
+                {{ (item.meeting_name || '会').charAt(0) }}
+              </div>
+              <div class="card-info">
+                <h3 class="card-title">{{ item.meeting_name || '未命名会议' }}</h3>
 
-            <div class="card-meta">
-              <span class="card-meta-item">📅 {{ item.create_time || '未知时间' }}</span>
+                <div class="card-meta">
+                  <span class="card-meta-item">📅 {{ item.create_time || '未知时间' }}</span>
+                </div>
+              </div>
             </div>
 
             <div class="card-footer">
@@ -1073,18 +1129,345 @@ onUnmounted(stopPolling)
   margin-bottom: 20px;
 }
 
-// ---- 响应式 ----
+// ============================================================
+// 响应式 — 参照 design/mockups/mobile-responsive/index.html 设计
+// 断点：sm ≤640px 手机 / md ≤768px 平板（max-width 语义）
+// ============================================================
+
+// ---- 移动端英雄区（默认隐藏） ----
+.mobile-hero {
+  display: none;
+}
+
+// ---- 会议卡片头像（默认隐藏，小屏显示） ----
+.card-avatar {
+  display: none;
+}
+
 @include respond-to(md) {
+  .dashboard {
+    padding: $space-4;
+  }
+
+  // 统计卡：单行4列紧凑样式（设计规范）
   .stats-row {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    gap: $space-2;
+    margin-bottom: $space-6;
   }
-  .meeting-grid {
-    grid-template-columns: 1fr;
+
+  .stat-card {
+    padding: $space-3 $space-2;
+    border-radius: $radius-md;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    aspect-ratio: 1 / 1;
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
   }
+
+  .stat-icon {
+    display: none;
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 0;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
   .page-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
+  }
+}
+
+@include respond-to(sm) {
+  .dashboard {
+    padding: 0;
+    max-width: none;
+  }
+
+  // ---- 页头 → 移动端英雄区 ----
+  .page-header.desktop-only {
+    display: none;
+  }
+
+  .mobile-hero {
+    display: block;
+    background: linear-gradient(160deg, var(--color-amber-50) 0%, var(--color-stone-50) 100%);
+    padding: $space-6 $space-4;
+    border-bottom: 1px solid var(--color-stone-100);
+  }
+
+  .dashboard-greeting {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--color-stone-900);
+    line-height: 1.3;
+
+    span {
+      color: var(--color-amber-500);
+    }
+  }
+
+  .dashboard-subtitle {
+    font-size: var(--text-sm);
+    color: var(--color-stone-500);
+    margin-top: 4px;
+  }
+
+  .dashboard-quick-actions {
+    display: flex;
+    gap: $space-2;
+    margin-top: $space-4;
+    overflow-x: auto;
+    @include scroll-x;
+  }
+
+  .quick-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: $radius-full;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    font-family: var(--font-body);
+    cursor: pointer;
+    border: none;
+    min-height: 44px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all var(--transition-fast);
+
+    &:active {
+      transform: scale(0.97);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+    }
+  }
+
+  .quick-action-upload {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
+  .quick-action-primary {
+    background: var(--color-amber-400);
+    color: var(--color-stone-900);
+    box-shadow: 0 2px 8px rgba(245, 180, 0, 0.25);
+
+    &:active {
+      background: var(--color-amber-500);
+    }
+  }
+
+  .quick-action-secondary {
+    background: white;
+    color: var(--color-stone-700);
+    border: 1.5px solid var(--color-stone-200);
+
+    &:active {
+      background: var(--color-stone-100);
+    }
+  }
+
+  // ---- 统计卡 ----
+  .stats-row {
+    padding: 0 $space-4;
+    margin-top: $space-4;
+    margin-bottom: $space-2;
+    gap: $space-2;
+  }
+
+  // ---- 列表区 ----
+  .meeting-list {
+    padding: 0 $space-4;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: $space-2;
+    margin-bottom: $space-3;
+  }
+
+  .title-row {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .search-box {
+    flex: 1;
+    max-width: 220px;
+
+    input {
+      width: 100%;
+    }
+  }
+
+  // 筛选 → 横向滚动胶囊（设计规范 filter-chip）
+  .filter-tabs {
+    display: flex;
+    gap: $space-2;
+    background: transparent;
+    border-radius: 0;
+    padding: 2px 0;
+    @include scroll-x;
+  }
+
+  .filter-tab {
+    flex-shrink: 0;
+    padding: 5px 14px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border-radius: $radius-full;
+    border: 1.5px solid var(--color-stone-200);
+    background: white;
+    color: var(--color-stone-600);
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+
+    &.active {
+      background: var(--color-amber-400);
+      color: var(--color-stone-900);
+      border-color: var(--color-amber-400);
+      box-shadow: none;
+    }
+  }
+
+  // ---- 会议卡片 → 移动端列表样式 ----
+  .meeting-grid {
+    grid-template-columns: 1fr;
+    gap: $space-3;
+  }
+
+  .meeting-card {
+    padding: $space-4;
+    @include card-active;
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
+  }
+
+  // 删除按钮移动端常显（无 hover）
+  .card-delete-btn {
+    opacity: 1;
+  }
+
+  // 状态徽章 → 右上角
+  .card-top {
+    position: absolute;
+    top: 14px;
+    right: 46px;
+    margin-bottom: 0;
+  }
+
+  .card-type-badge {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  .card-main {
+    display: flex;
+    align-items: flex-start;
+    gap: $space-3;
+  }
+
+  .card-avatar {
+    display: flex;
+    width: 44px;
+    height: 44px;
+    border-radius: $radius-md;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: var(--text-lg);
+    font-family: var(--font-display);
+
+    &.amber {
+      background: var(--color-amber-100);
+      color: var(--color-amber-600);
+    }
+
+    &.stone {
+      background: var(--color-stone-100);
+      color: var(--color-stone-600);
+    }
+  }
+
+  .card-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card-title {
+    font-size: 15px;
+    padding-right: 84px;
+  }
+
+  .card-meta {
+    margin-bottom: 0;
+  }
+
+  .card-footer .status-badge {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  // 弹窗：移动端禁止拉伸开关
+  .modal-overlay {
+    align-items: flex-end;
+  }
+
+  .modal {
+    border-radius: 20px 20px 0 0;
+    max-width: none;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .switch-toggle {
+    flex-shrink: 0;
+    min-width: 50px;
+    min-height: 28px;
+  }
+
+  .switch-dot {
+    width: 22px;
+    height: 22px;
+  }
+
+  .switch-toggle.active .switch-dot {
+    transform: translateX(22px);
   }
 }
 
@@ -1222,11 +1605,16 @@ onUnmounted(stopPolling)
   position: relative;
   width: 44px;
   height: 24px;
+  min-width: 44px;
+  min-height: 24px;
+  flex-shrink: 0;
+  flex-grow: 0;
   border: none;
   border-radius: 12px;
   background: var(--color-stone-300);
   cursor: pointer;
   transition: background 0.2s;
+  padding: 0;
 
   &.active {
     background: var(--color-amber-400);

@@ -28,6 +28,25 @@ const activeFilter = ref('all') // all | text | audio | image | video
 const keyword = ref('')
 const expandedErrorId = ref<string | null>(null)
 const polling = ref(false)
+const mobileFilterOpen = ref(false)
+const showMobileSearch = ref(false)
+
+const filterOptions = [
+  { key: 'all', label: '全部类型' },
+  { key: 'text', label: '📄 文档' },
+  { key: 'audio', label: '🎵 音频' },
+  { key: 'image', label: '🖼 图片' },
+  { key: 'video', label: '🎬 视频' },
+]
+
+const filterLabelMap: Record<string, string> = {
+  all: '全部类型',
+  text: '文档',
+  audio: '音频',
+  image: '图片',
+  video: '视频',
+}
+const currentFilterLabel = computed(() => filterLabelMap[activeFilter.value] || '全部类型')
 
 // ================================================================
 // 弹窗状态
@@ -178,18 +197,20 @@ function getStatusInfo(f: KnowledgeFileItem) {
 
 /** 文件类型 → CSS class（后端 0=文本 1=音频 2=图片）*/
 function getTypeClass(type?: number | string) {
-  if (type === 0 || type === 'text') return 'text'
-  if (type === 1 || type === 'audio') return 'audio'
-  if (type === 2 || type === 'image') return 'image'
+  if (type === 0 || type === 'doc') return 'doc'
+  if (type === 1 || type === 'image') return 'image'
+  if (type === 2 || type === 'audio') return 'audio'
+  if (type === 3 || type === 'video') return 'video'
   return 'other'
 }
 
-/** 文件类型 → emoji 图标 */
-function getTypeIcon(type?: number | string) {
-  if (type === 0 || type === 'text') return '📄'
-  if (type === 1 || type === 'audio') return '🎵'
-  if (type === 2 || type === 'image') return '🖼'
-  return '📁'
+/** 文件类型 → 简短文本标签 */
+function getTypeLabel(type?: number | string) {
+  if (type === 0 || type === 'doc') return '文档'
+  if (type === 1 || type === 'image') return '图片'
+  if (type === 2 || type === 'audio') return '音频'
+  if (type === 3 || type === 'video') return '视频'
+  return '其他'
 }
 
 /** KB 图标 */
@@ -210,6 +231,18 @@ function toggleError(fileId: string) {
 /** 切换筛选 */
 function changeFilter(filter: string) {
   activeFilter.value = filter
+}
+
+/** 移动端：切换搜索框显示并聚焦 */
+function toggleMobileSearch() {
+  showMobileSearch.value = !showMobileSearch.value
+  if (showMobileSearch.value) {
+    // 下一帧聚焦搜索输入框
+    requestAnimationFrame(() => {
+      const input = document.querySelector('.search-box input') as HTMLInputElement | null
+      input?.focus()
+    })
+  }
 }
 
 // ================================================================
@@ -470,7 +503,7 @@ onUnmounted(() => {
         <aside class="sidebar">
           <div class="sidebar-header">
             <h2 class="sidebar-title">知识库</h2>
-            <button class="btn-create-kb" @click="openCreateKbDialog">
+            <button class="btn-create-kb desktop-create" @click="openCreateKbDialog">
               <span style="font-size: 16px">+</span>
               新建知识库
             </button>
@@ -478,6 +511,12 @@ onUnmounted(() => {
               <span>🔍</span>
               <input v-model="kbKeyword" type="text" placeholder="搜索知识库..." />
             </div>
+          </div>
+
+          <!-- 移动端：横向滚动列表上方标题（仅 sm 显示，参照 mobile-responsive 设计 mobile-row-between） -->
+          <div class="kb-scroll-header">
+            <span class="kb-scroll-title">我的知识库</span>
+            <span class="kb-scroll-count">共 {{ filteredKnowledgeList.length }} 个</span>
           </div>
 
           <div v-loading="knowledgeStore.loading" class="kb-list">
@@ -528,6 +567,20 @@ onUnmounted(() => {
                 </div>
               </div>
             </template>
+
+            <!-- 移动端：新建知识库卡片（横向滚动列表末尾，参照 mobile-responsive 设计 kb-list-card-add） -->
+            <div class="kb-item kb-item-add" @click="openCreateKbDialog">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>新建知识库</span>
+            </div>
+          </div>
+
+          <!-- 移动端：当前知识库信息条（参照 mobile-responsive 设计） -->
+          <div v-if="knowledgeStore.currentKnowledgeName" class="kb-current-info">
+            <span class="kb-current-label">当前：</span>
+            <span class="kb-current-name">{{ knowledgeStore.currentKnowledgeName }}</span>
+            <span class="kb-current-sep">·</span>
+            <span class="kb-current-meta">{{ knowledgeStore.files.length }} 个文件</span>
           </div>
 
           <!-- 底部分页 -->
@@ -585,8 +638,40 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <!-- 操作栏 -->
-            <div class="action-bar">
+            <!-- 移动端：三按钮平齐操作栏（参照 mobile-responsive 设计：搜索/上传图标 + 筛选按钮） -->
+            <div class="action-bar-mobile">
+              <button class="action-bar-icon-btn" @click="toggleMobileSearch" aria-label="搜索文件">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </button>
+              <button class="action-bar-icon-btn" @click="uploadDialogVisible = true" aria-label="上传文件">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </button>
+              <button class="action-bar-icon-btn" @click="openEditKbDialog" aria-label="编辑知识库">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button
+                class="filter-toggle-btn"
+                :class="{ expanded: mobileFilterOpen }"
+                @click="mobileFilterOpen = !mobileFilterOpen"
+              >
+                <span>{{ currentFilterLabel }}</span>
+                <svg class="filter-toggle-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+
+            <!-- 移动端：筛选按钮展开后的分类下拉（参照 mobile-responsive 设计 filter-dropdown） -->
+            <div v-if="mobileFilterOpen" class="filter-dropdown-mobile">
+              <button
+                v-for="f in filterOptions"
+                :key="f.key"
+                class="filter-dropdown-chip"
+                :class="{ active: activeFilter === f.key }"
+                @click="changeFilter(f.key); mobileFilterOpen = false"
+              >{{ f.label }}</button>
+            </div>
+
+            <!-- 操作栏（移动端搜索激活时通过 .mobile-search-visible 强制显示） -->
+            <div class="action-bar" :class="{ 'mobile-search-visible': showMobileSearch }">
               <div class="search-box">
                 <span>🔍</span>
                 <input v-model="keyword" type="text" placeholder="搜索文件名..." />
@@ -653,7 +738,7 @@ onUnmounted(() => {
                   :class="{ expanded: expandedErrorId === file.id }"
                 >
                   <div class="file-type-icon" :class="`type-${getTypeClass(file.type)}`">
-                    {{ getTypeIcon(file.type) }}
+                    {{ getTypeLabel(file.type) }}
                   </div>
                   <div class="file-info">
                     <div class="file-name" :title="file.file_name">{{ file.file_name }}</div>
@@ -1121,6 +1206,21 @@ onUnmounted(() => {
   height: 100%;
 }
 
+// 移动端 KB 列表上方标题（桌面端默认隐藏）
+.kb-scroll-header {
+  display: none;
+}
+
+// 移动端当前知识库信息条（桌面端默认隐藏）
+.kb-current-info {
+  display: none;
+}
+
+// 移动端三按钮平齐操作栏（桌面端默认隐藏）
+.action-bar-mobile {
+  display: none;
+}
+
 .kb-group-label {
   font-size: 11px;
   font-weight: 600;
@@ -1160,6 +1260,11 @@ onUnmounted(() => {
     background: var(--color-amber-400);
     border-radius: 0 3px 3px 0;
   }
+}
+
+// 移动端新建知识库卡片（桌面端隐藏）
+.kb-item-add {
+  display: none;
 }
 
 .kb-icon {
@@ -1610,9 +1715,10 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.type-text { background: #EFF6FF; color: var(--color-info); }
-.type-audio { background: #ECFDF5; color: var(--color-success); }
-.type-image { background: #F3E8FF; color: #8B5CF6; }
+.type-doc { background: var(--color-file-doc-bg); color: var(--color-file-doc); }
+.type-image { background: var(--color-file-image-bg); color: var(--color-file-image); }
+.type-audio { background: var(--color-file-audio-bg); color: var(--color-file-audio); }
+.type-video { background: var(--color-file-video-bg); color: var(--color-file-video); }
 .type-other { background: var(--color-stone-100); color: var(--color-stone-500); }
 
 .file-info {
@@ -2263,6 +2369,12 @@ onUnmounted(() => {
 // ================================================================
 // 响应式
 // ================================================================
+
+// ---- el-dialog 全局圆角（与 NewChatModal 的 20px 保持一致） ----
+:deep(.el-dialog) {
+  border-radius: 20px;
+}
+
 @include respond-to(md) {
   .layout {
     flex-direction: column;
@@ -2270,9 +2382,11 @@ onUnmounted(() => {
 
   .sidebar {
     width: 100%;
-    max-height: 200px;
+    max-height: none;
+    min-height: 220px;
     border-right: none;
     border-bottom: 1px solid var(--color-stone-200);
+    flex-shrink: 0;
   }
 
   .sidebar-header {
@@ -2283,33 +2397,204 @@ onUnmounted(() => {
     display: none;
   }
 
+  // 知识库列表 → 横向滚动卡片选择器（参照 mobile-responsive 设计 kb-list-scroll）
   .kb-list {
     display: flex;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     overflow-x: auto;
-    gap: 8px;
-    padding: 10px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: var(--space-4);
+    scroll-padding-right: var(--space-4);
+
+    &::-webkit-scrollbar { display: none; }
+    -ms-overflow-style: none;
   }
 
   .kb-group-label {
     display: none;
   }
 
+  // 知识库卡片（参照 mobile-responsive 设计 kb-list-card：竖排 148px 卡片）
   .kb-item {
-    flex: 0 0 160px;
+    flex: 0 0 148px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
     margin-bottom: 0;
+    padding: 12px;
+    border: 1.5px solid var(--color-stone-200);
+    border-radius: var(--radius-lg);
+    background: white;
+    box-shadow: $shadow-sm;
+    scroll-snap-align: start;
+
+    &:active {
+      background: var(--color-stone-50);
+      transform: scale(0.97);
+    }
+
+    &.active {
+      border-color: var(--color-amber-400);
+      background: var(--color-amber-50);
+      box-shadow: 0 0 0 2px rgba(245, 180, 0, 0.12);
+    }
+  }
+
+  .kb-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+    border-radius: var(--radius-md);
   }
 
   .kb-info {
-    display: none;
+    display: block;
+  }
+
+  .kb-name {
+    font-size: var(--text-sm);
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    margin-bottom: 0;
+  }
+
+  .kb-meta {
+    display: flex;
+    font-size: var(--text-xs);
   }
 
   .kb-item.active::before {
     display: none;
   }
 
-  .btn-create-kb {
-    width: 160px;
+  // 桌面端新建按钮隐藏，改用列表末尾虚线卡片
+  .btn-create-kb.desktop-create {
+    display: none;
+  }
+
+  .kb-item-add {
+    display: flex;
+    border-style: dashed;
+    justify-content: center;
+    align-items: center;
+    color: var(--color-stone-400);
+    min-height: 104px;
+    cursor: pointer;
+    background: white;
+
+    svg {
+      color: var(--color-stone-300);
+    }
+  }
+
+  // ---- 移动端 KB 列表上方标题 ----
+  .kb-scroll-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3) var(--space-4) 0;
+  }
+
+  .kb-scroll-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--color-stone-800);
+  }
+
+  .kb-scroll-count {
+    font-size: var(--text-xs);
+    color: var(--color-stone-400);
+  }
+
+  // ---- 移动端当前知识库信息条 ----
+  .kb-current-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: var(--space-1) var(--space-4) var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .kb-current-label {
+    font-size: 11px;
+    color: var(--color-stone-400);
+  }
+
+  .kb-current-name {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-amber-600);
+  }
+
+  .kb-current-sep {
+    color: var(--color-stone-300);
+  }
+
+  .kb-current-meta {
+    font-size: 11px;
+    color: var(--color-stone-400);
+  }
+
+  // ---- 移动端三按钮平齐操作栏 ----
+  .action-bar-mobile {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+  }
+
+  .action-bar-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--color-stone-100);
+    border: none;
+    color: var(--color-stone-600);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
     flex-shrink: 0;
+    transition: all var(--transition-fast);
+
+    &:active {
+      background: var(--color-stone-200);
+      transform: scale(0.95);
+    }
+  }
+
+  .filter-toggle-btn {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 8px 12px;
+    min-height: 44px;
+    background: white;
+    border: 1.5px solid var(--color-stone-200);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--color-stone-700);
+    font-family: var(--font-body);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+
+    .filter-toggle-arrow {
+      transition: transform var(--transition-fast);
+    }
+
+    &.expanded .filter-toggle-arrow {
+      transform: rotate(180deg);
+    }
   }
 
   .kb-pagination {
@@ -2336,6 +2621,10 @@ onUnmounted(() => {
     max-width: 100%;
   }
 
+  .filter-group {
+    flex-wrap: wrap;
+  }
+
   .stats-bar {
     flex-wrap: wrap;
     margin-bottom: 16px;
@@ -2351,6 +2640,257 @@ onUnmounted(() => {
 
   .file-pagination {
     padding: 12px 0 16px;
+  }
+
+  // "新建知识库" / "编辑知识库" / "删除文件" 弹窗 → 移动端居中
+  :deep(.el-overlay-dialog) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  :deep(.el-dialog) {
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    width: 92% !important;
+    max-width: 500px;
+  }
+
+  // 筛选下拉菜单
+  .filter-dropdown-mobile {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 0 0 var(--space-3);
+  }
+
+  .filter-dropdown-chip {
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    border: 1.5px solid var(--color-stone-200);
+    background: white;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--color-stone-700);
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    min-height: 36px;
+
+    &:active {
+      background: var(--color-stone-100);
+    }
+
+    &.active {
+      background: var(--color-amber-400);
+      color: var(--color-stone-900);
+      border-color: var(--color-amber-400);
+    }
+  }
+
+  // 搜索激活时强制显示 search-box
+  .action-bar.mobile-search-visible {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    .search-box {
+      max-width: 100%;
+    }
+
+    .filter-group {
+      display: none;
+    }
+  }
+}
+
+@include respond-to(sm) {
+  .knowledge-page {
+    height: auto;
+    min-height: calc(100vh - 64px);
+  }
+
+  // 桌面专用元素移动端隐藏
+  .action-bar {
+    display: none;
+  }
+
+  // 手机端：操作栏缩小上间距 + 筛选按钮靠右
+  .action-bar-mobile {
+    padding: 4px 0 8px;
+  }
+
+  .filter-toggle-btn {
+    margin-left: auto;
+  }
+
+  .stats-bar {
+    display: none;
+  }
+
+  .breadcrumb {
+    display: none;
+  }
+
+  .content-actions .btn-secondary {
+    display: none;
+  }
+
+  // 移动端去掉"上传文件"文字按钮（仅保留图标按钮）
+  .content-actions .btn-primary {
+    display: none;
+  }
+
+  // 移动端隐藏标题行（icon + 名称 + 编辑/删除/上传按钮）
+  .content-title-row {
+    display: none;
+  }
+
+  .content-header {
+    display: none;
+  }
+
+  :deep(.el-overlay-dialog) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  :deep(.el-dialog) {
+    position: relative !important;
+    top: 0 !important;
+    margin: 0 !important;
+    transform: none !important;
+    width: 94% !important;
+    max-width: 500px;
+  }
+
+  .sidebar {
+    max-height: none;
+  }
+
+  .sidebar-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .sidebar-title {
+    margin-bottom: 0;
+  }
+
+  .btn-create-kb {
+    width: auto;
+    margin-bottom: 0;
+  }
+
+  .kb-item {
+    flex: 0 0 140px;
+  }
+
+  .kb-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .content-inner {
+    padding: 16px 12px 0;
+  }
+
+  .content-title {
+    font-size: 18px;
+  }
+
+  .content-actions {
+    gap: 6px;
+
+    .btn-primary,
+    .btn-secondary,
+    .btn-danger {
+      padding: 8px 12px;
+      font-size: 12px;
+      gap: 4px;
+    }
+  }
+
+  .filter-group {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+
+    &::-webkit-scrollbar { height: 0; }
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .filter-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .stats-bar {
+    gap: 8px;
+  }
+
+  .stat-card {
+    flex: 0 0 calc(50% - 4px);
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .stat-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .stat-count {
+    font-size: 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .file-card {
+    flex-wrap: wrap;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .file-type-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .file-status {
+    margin-left: auto;
+  }
+
+  .file-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  // 移动端搜索激活时强制显示搜索框（覆盖 display:none）
+  .action-bar.mobile-search-visible {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 0 12px;
+
+    .search-box {
+      max-width: 100%;
+    }
+
+    .filter-group {
+      display: none;
+    }
   }
 }
 </style>

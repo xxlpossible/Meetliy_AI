@@ -129,7 +129,25 @@
   text-overflow: ellipsis;
 }
 
-// 响应式断点
+// ============================================================
+// 响应式断点 — v2.0 移动优先 (min-width)
+// ============================================================
+
+// 移动优先：从小屏开始，逐层增强
+@mixin from-sm {
+  @media (min-width: $breakpoint-sm) { @content; }
+}
+@mixin from-md {
+  @media (min-width: $breakpoint-md) { @content; }
+}
+@mixin from-lg {
+  @media (min-width: $breakpoint-lg) { @content; }
+}
+@mixin from-xl {
+  @media (min-width: $breakpoint-xl) { @content; }
+}
+
+// 仅小屏（向下兼容旧版 max-width 用法，标注为 deprecated）
 @mixin respond-to($breakpoint) {
   @if $breakpoint == sm {
     @media (max-width: $breakpoint-sm) { @content; }
@@ -140,4 +158,56 @@
   } @else if $breakpoint == xl {
     @media (max-width: $breakpoint-xl) { @content; }
   }
+}
+
+// ============================================================
+// 触摸 & 输入设备适配
+// ============================================================
+
+// 触摸设备（粗指针）
+@mixin touch-device {
+  @media (pointer: coarse) { @content; }
+}
+
+// 不支持 hover 的设备
+@mixin no-hover {
+  @media (hover: none) { @content; }
+}
+
+// 移动端卡片按下反馈（替代 hover 效果）
+@mixin card-active {
+  transition: transform var(--transition-fast), background var(--transition-fast);
+  @include no-hover {
+    &:active {
+      transform: scale(0.985);
+      background: $color-stone-50;
+    }
+  }
+}
+
+// 最小触摸区域保障
+@mixin touch-target {
+  min-height: var(--touch-target-min);
+  min-width: var(--touch-target-min);
+}
+
+// 安全区域底部 padding
+@mixin safe-bottom($base: $space-3) {
+  padding-bottom: max(#{$base}, var(--safe-area-bottom));
+}
+
+// 毛玻璃底部导航栏
+@mixin glass-nav {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid $color-stone-200;
+}
+
+// 水平滚动容器（隐藏滚动条，移动端流畅）
+@mixin scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
 }

@@ -8,12 +8,14 @@ FROM python:3.11-slim
 LABEL maintainer="dbs"
 LABEL description="Meetily FastAPI Backend"
 
-# 系统依赖：gcc 用于编译某些 Python 包，libmagic 用于文件类型检测
+# 系统依赖：gcc 用于编译某些 Python 包，libmagic 用于文件类型检测，
+# ffmpeg 用于会议录音的多路音频合并/转码（audio_service.py 通过 subprocess 调用）
 # 使用阿里云 Debian 镜像源加速
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
     && apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libmagic1 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 uv（快速 Python 包管理器，使用阿里云 PyPI 镜像）

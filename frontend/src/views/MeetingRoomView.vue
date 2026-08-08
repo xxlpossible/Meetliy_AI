@@ -487,20 +487,28 @@ function toggleSidebar() {
 
       <!-- 底部控制栏 -->
       <div class="room-controls">
-        <button
-          class="ctrl-btn ctrl-btn-mic"
-          :class="{ muted: !micEnabled }"
-          @click="toggleMic"
-        >
-          <span>{{ micEnabled ? '🎤' : '🔇' }}</span>
-          {{ micEnabled ? '麦克风已开启' : '麦克风已静音' }}
-        </button>
-        <button class="ctrl-btn ctrl-btn-leave" @click="leaveMeeting">
-          <span>🚪</span> 离开会议
-        </button>
-        <button v-if="isHost" class="ctrl-btn ctrl-btn-end" @click="endMeeting">
-          <span>📴</span> 结束会议
-        </button>
+        <div class="ctrl-group">
+          <button
+            class="ctrl-btn ctrl-btn-mic"
+            :class="{ muted: !micEnabled }"
+            @click="toggleMic"
+          >
+            <span>{{ micEnabled ? '🎤' : '🔇' }}</span>
+          </button>
+          <span class="ctrl-label">关闭<br>麦克风</span>
+        </div>
+        <div class="ctrl-group">
+          <button class="ctrl-btn ctrl-btn-leave" @click="leaveMeeting">
+            <span>🚪</span>
+          </button>
+          <span class="ctrl-label">离开<br>会议</span>
+        </div>
+        <div v-if="isHost" class="ctrl-group">
+          <button class="ctrl-btn ctrl-btn-end" @click="endMeeting">
+            <span>⏹</span>
+          </button>
+          <span class="ctrl-label">结束<br>会议</span>
+        </div>
       </div>
     </div>
 
@@ -992,33 +1000,47 @@ function toggleSidebar() {
 .room-controls {
   background: white;
   border-top: 1px solid var(--color-stone-200);
-  padding: 16px 24px;
+  padding: 12px 24px max(12px, var(--safe-area-bottom));
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 48px;
   flex-shrink: 0;
+}
+
+.ctrl-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .ctrl-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
   border: 1.5px solid var(--color-stone-200);
-  border-radius: var(--radius-md);
   background: white;
   color: var(--color-stone-700);
-  font-size: 14px;
-  font-weight: 500;
-  font-family: var(--font-body);
+  font-size: 20px;
   cursor: pointer;
   transition: all 0.15s;
 
-  &:hover {
-    background: var(--color-stone-50);
-    border-color: var(--color-stone-300);
+  span { line-height: 1; }
+
+  &:active {
+    transform: scale(0.92);
   }
+}
+
+.ctrl-label {
+  font-size: 10px;
+  color: var(--color-stone-500);
+  text-align: center;
+  line-height: 1.3;
 }
 
 .ctrl-btn-mic {
@@ -1038,20 +1060,18 @@ function toggleSidebar() {
   border-color: var(--color-error);
   color: white;
 
-  &:hover {
+  &:active {
     background: #dc2626;
-    border-color: #dc2626;
   }
 }
 
 .ctrl-btn-leave {
-  background: white;
-  border-color: var(--color-stone-300);
-  color: var(--color-stone-600);
+  background: var(--color-warning);
+  border-color: var(--color-warning);
+  color: white;
 
-  &:hover {
-    background: var(--color-stone-50);
-    border-color: var(--color-stone-400);
+  &:active {
+    background: #d97706;
   }
 }
 
@@ -1316,13 +1336,165 @@ function toggleSidebar() {
   }
 }
 
-@media (max-width: 768px) {
+@include respond-to(md) {
   .meeting-layout {
     grid-template-columns: 1fr;
 
     .sidebar {
       display: none;
     }
+  }
+
+  .room-header {
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .room-title-text h2 {
+    font-size: 14px;
+  }
+
+  .room-title-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+  }
+
+  .room-timer {
+    font-size: 12px;
+    padding: 3px 8px;
+  }
+
+  .participants-bar {
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .participants-label {
+    font-size: 11px;
+  }
+
+  .participant-pill {
+    padding: 4px 10px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .pill-avatar {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+
+  .transcript-area {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  .transcript-line {
+    max-width: 95%;
+    padding: 12px 14px;
+  }
+
+  .tl-text {
+    font-size: 14px;
+  }
+
+  .room-controls {
+    padding: 12px 16px;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+    gap: 4px;
+
+    span {
+      font-size: 14px;
+    }
+  }
+}
+
+@include respond-to(sm) {
+  // 头部渐变背景（参照 mobile-responsive 设计 meeting-room-header）
+  .room-header {
+    background: linear-gradient(160deg, var(--color-amber-50) 0%, var(--color-stone-50) 100%);
+    border-bottom: 1px solid var(--color-stone-100);
+  }
+
+  .room-title-block {
+    gap: 8px;
+  }
+
+  .room-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .participants-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+
+    &::-webkit-scrollbar { height: 0; }
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  // 参与者 chip：头像放大 + 说话时琥珀描边
+  .participant-pill {
+    flex-shrink: 0;
+
+    &.speaking {
+      background: white;
+      border-color: var(--color-amber-400);
+
+      .pill-avatar,
+      .pill-avatar-img {
+        box-shadow: 0 0 0 2px var(--color-amber-400);
+      }
+    }
+  }
+
+  .pill-avatar,
+  .pill-avatar-img {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .transcript-area {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .transcript-line {
+    max-width: 100%;
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .tl-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .tl-speaker-name {
+    font-size: 10px;
+  }
+
+  .tl-text {
+    font-size: 13px;
+  }
+
+  .room-controls {
+    gap: 24px;
+    padding: 10px 16px max(10px, var(--safe-area-bottom));
   }
 }
 </style>

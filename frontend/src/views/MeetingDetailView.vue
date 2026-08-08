@@ -205,23 +205,51 @@ async function loadDetail() {
 }
 
 function copyToClipboard() {
-  const text = [
-    taskResult.value['summary'] || '',
-    taskResult.value['complete_text'] || '',
-    taskResult.value['action'] || '',
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+  let text = ''
+
+  if (showRealtimeTranscript.value) {
+    // need_summary 为假：复制实时转录
+    const lines = getRealtimeLines()
+    text = lines.join('\n')
+  } else {
+    // need_summary 为真：复制摘要
+    text = getValue('summary')
+  }
 
   if (!text) {
     ElMessage.warning('暂无可复制的内容')
     return
   }
 
-  navigator.clipboard.writeText(text).then(
-    () => ElMessage.success('已复制到剪贴板'),
-    () => ElMessage.error('复制失败，请手动选择')
-  )
+  // 优先 Clipboard API，失败回退 execCommand
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(
+      () => ElMessage.success('已复制到剪贴板'),
+      () => fallbackCopy(text)
+    )
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+function fallbackCopy(text: string) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  try {
+    document.execCommand('copy')
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动选择')
+  } finally {
+    document.body.removeChild(textarea)
+  }
 }
 
 function exportMarkdown() {
@@ -276,9 +304,6 @@ onMounted(loadDetail)
           </span>
         </div>
         <div class="detail-actions">
-          <el-button v-if="!showRealtimeTranscript" type="primary" size="large" @click="router.push(`/chat/${resultData?.task_id}`)">
-            💬 AI 深度对话
-          </el-button>
           <el-button @click="copyToClipboard">📋 复制纪要</el-button>
           <el-button @click="exportMarkdown">📤 导出 Markdown</el-button>
         </div>
@@ -738,7 +763,7 @@ onMounted(loadDetail)
   width: 20px;
   height: 20px;
   border: 2px solid var(--color-stone-300);
-  border-radius: 5px;
+  border-radius: 50%;
   flex-shrink: 0;
   margin-top: 2px;
   cursor: pointer;
@@ -896,5 +921,75 @@ onMounted(loadDetail)
     gap: 4px;
   }
   .ts-time, .ts-speaker { min-width: auto; }
+  .module-tabs { top: 56px; }
+  .detail-actions { gap: 8px; }
+
+  // 模块 Tab → 胶囊（参照 mobile-responsive 设计 transcript-tabs）
+  .module-tab {
+    border-radius: var(--radius-full);
+    padding: 10px 18px;
+  }
+}
+
+@include respond-to(sm) {
+  .detail-page {
+    padding: 16px 12px;
+  }
+
+  .detail-header {
+    margin-bottom: 20px;
+    background: linear-gradient(160deg, var(--color-amber-50) 0%, var(--color-stone-50) 100%);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+
+  .detail-title {
+    font-size: 20px;
+    margin: 12px 0;
+  }
+
+  .content-section {
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 16px;
+  }
+
+  .section-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
+
+  .section-title {
+    font-size: 16px;
+  }
+
+  .module-tab {
+    padding: 10px 14px;
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .module-tab-icon {
+    font-size: 14px;
+  }
+
+  .markdown-content {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .rt-time, .ts-time {
+    min-width: auto;
+    font-size: 11px;
+  }
+
+  .rt-speaker, .ts-speaker {
+    min-width: auto;
+    font-size: 12px;
+  }
+
+  .rt-text, .ts-text {
+    font-size: 13px;
+  }
 }
 </style>

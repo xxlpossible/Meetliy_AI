@@ -799,4 +799,46 @@ watch(() => props.visible, (val) => {
     font-size: 13px;
   }
 }
+
+// ===== 移动端响应式 =====
+@include respond-to(sm) {
+  .modal {
+    max-width: calc(100vw - 32px);
+    border-radius: 16px;
+  }
+
+  .modal-header {
+    padding: 20px 20px 12px;
+  }
+
+  .modal-title {
+    font-size: 18px;
+  }
+
+  .modal-body {
+    padding: 0 20px 16px;
+    max-height: 55vh;
+  }
+
+  .modal-footer {
+    padding: 12px 20px;
+    gap: 8px;
+  }
+
+  .select-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .select-search {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .select-option {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+}
 </style>

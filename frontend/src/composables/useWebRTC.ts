@@ -6,14 +6,16 @@
 //   通过 MeetingRoomView 中继信令（offer/answer/ICE candidate）
 //   经后端 WebSocket 的 signal 通道转发。
 //
-// 关键设计（参考 frontend_test/meeting.js 已验证方案）：
-//   1. 使用 onnegotiationneeded 事件触发 createOffer（而非手动调用），
-//      确保在 addTrack 后由浏览器自动触发协商。
-//   2. 事件处理器必须在 addTrack 之前设置，否则 ontrack 可能丢失。
-//   3. ICE 候选缓存：早于 setRemoteDescription 到达的 ICE 候选
-//      暂存到 pendingCandidates，远端描述就绪后刷新。
-//   4. 防冲突 (glare)：userId 较小方为 initiator（设 onnegotiationneeded），
-//      较大方等待对方 offer。
+// v2 设计（生产级修复）：
+//   1. 移除 onnegotiationneeded 依赖：较小方在 connectToPeer 中显式
+//      createOffer，不再依赖浏览器只触发一次且时机不可控的异步钩子。
+//   2. 防冲突 (glare)：userId 较小方为发起方（显式 createOffer），
+//      较大方只创建 PE 并等待远端 offer。
+//   3. ICE / connection 状态自愈：进入 failed 时自动关闭旧 PC 并重建 +
+//      重新协商（带指数退避冷却），同时 channel 断开或切标签页/最小化
+//      不影响 WebRTC 连接本身（浏览器将 RTC 视为后台任务保障）。
+//   4. ICE 候选缓存：早于 setRemoteDescription 到达的 ICE 候选暂存到
+//      pendingCandidates，远端描述就绪后刷新。
 // ============================================================
 
 import { ref } from 'vue'
@@ -25,6 +27,11 @@ const RTC_CONFIG: RTCConfiguration = {
     { urls: 'stun:stun1.l.google.com:19302' },
   ],
 }
+
+/** ICE/connection 失败后的重建参数 */
+const MAX_REBUILD_ATTEMPTS = 5          // 最多重建 5 次
+const REBUILD_BASE_DELAY_MS = 1000      // 基础延迟 1 秒
+const REBUILD_MAX_DELAY_MS = 10_000     // 最大延迟 10 秒
 
 export interface WebRTCSignal {
   signal_type: 'offer' | 'answer' | 'ice'
@@ -47,9 +54,19 @@ export function useWebRTC() {
    */
   const pendingCandidates = new Map<number, RTCIceCandidateInit[]>()
 
+  /** 重建防抖定时器 */
+  const rebuildTimers = new Map<number, ReturnType<typeof setTimeout>>()
+
+  /** 每个 peer 的当前重建次数（每次成功连接后应重置） */
+  const rebuildAttempts = new Map<number, number>()
+
   let localStream: MediaStream | null = null
   let sendSignalFn: ((toUserId: number, signalType: string, data: any) => void) | null = null
   let myUserId: number | null = null
+
+  // ============================================================
+  // 初始化
+  // ============================================================
 
   /**
    * 初始化 WebRTC（仅注入依赖，不发起连接）
@@ -68,39 +85,27 @@ export function useWebRTC() {
     isReady.value = true
   }
 
+  // ============================================================
+  // PC 创建 / 显式协商
+  // ============================================================
+
   /**
-   * 核心：创建与指定 peer 的 RTCPeerConnection
-   * @param isInitiator   userId 较小方为 true（设 onnegotiationneeded 主动发 offer）
+   * 创建与指定 peer 的 RTCPeerConnection。
+   * 不再设置 onnegotiationneeded —— 发起由 connectToPeer 显式调用 createOffer。
    */
-  function createPeerConnection(targetUserId: number, isInitiator: boolean): RTCPeerConnection {
+  function createPeerConnection(targetUserId: number): RTCPeerConnection {
     const pc = new RTCPeerConnection(RTC_CONFIG)
     peerConnections.set(targetUserId, pc)
 
-    // ---- 1. 事件处理器（必须在 addTrack 之前设置） ----
-
-    // 发起方：监听 onnegotiationneeded 触发 createOffer
-    if (isInitiator) {
-      pc.onnegotiationneeded = async () => {
-        try {
-          console.log(`[WebRTC] onnegotiationneeded → createOffer: user=${targetUserId}`)
-          const offer = await pc.createOffer()
-          await pc.setLocalDescription(offer)
-          sendSignalFn!(targetUserId, 'offer', pc.localDescription)
-        } catch (e) {
-          console.error(`[WebRTC] createOffer 失败 (${targetUserId}):`, e)
-        }
-      }
-    }
-
-    // 接收远程音轨
+    // ---- 接收远程音轨 ----
     pc.ontrack = (event: RTCTrackEvent) => {
       const remoteStream = event.streams[0]
       if (!remoteStream) return
-      console.log(`[WebRTC] 收到远程音轨: user=${targetUserId}, tracks=${remoteStream.getAudioTracks().length}`)
+      console.log(`[WebRTC] 收到远程音轨: user=${targetUserId}`)
       playRemoteAudio(targetUserId, remoteStream)
     }
 
-    // ICE 候选
+    // ---- ICE 候选 ----
     pc.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
       if (event.candidate) {
         sendSignalFn!(targetUserId, 'ice', event.candidate.toJSON())
@@ -109,16 +114,30 @@ export function useWebRTC() {
       }
     }
 
-    // 连接状态
+    // ---- ICE 连接状态 → 失败时自动重建 ----
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC] ICE 状态: user=${targetUserId}, state=${pc.iceConnectionState}`)
+      if (pc.iceConnectionState === 'failed') {
+        console.warn(`[WebRTC] ICE 失败 → 调度自动重建: user=${targetUserId}`)
+        scheduleRebuild(targetUserId)
+      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        // 连接成功后重置重建计数
+        rebuildAttempts.delete(targetUserId)
+      }
     }
 
+    // ---- 连接状态 → 失败兜底 ----
     pc.onconnectionstatechange = () => {
       console.log(`[WebRTC] 连接状态: user=${targetUserId}, state=${pc.connectionState}`)
+      if (pc.connectionState === 'failed') {
+        console.warn(`[WebRTC] 连接失败 → 调度自动重建: user=${targetUserId}`)
+        scheduleRebuild(targetUserId)
+      } else if (pc.connectionState === 'connected') {
+        rebuildAttempts.delete(targetUserId)
+      }
     }
 
-    // ---- 2. 添加本地音轨（可能触发 onnegotiationneeded） ----
+    // ---- 添加本地音轨 ----
     if (localStream) {
       localStream.getAudioTracks().forEach((track) => {
         pc.addTrack(track, localStream!)
@@ -130,29 +149,146 @@ export function useWebRTC() {
   }
 
   /**
-   * 为指定 peer 发起连接
-   * - 仅在 WS 已连接后调用（由 handleParticipantsList / handleParticipantJoined 触发）
-   * - 防冲突：userId 较小方设为 initiator
+   * 对已有的 PC 显式发起 offer（用于新建或 ICE 失败后的重建）。
+   * 不依赖 onnegotiationneeded —— 由调用方在 PC signalingState 稳定后显式调用。
    */
-  function connectToPeer(peerUserId: number): void {
+  async function initiateOffer(peerUserId: number): Promise<void> {
+    const pc = peerConnections.get(peerUserId)
+    if (!pc) return
+
+    // 防止重复发起：如果已有 local offer 或正在协商中，跳过
+    if (pc.signalingState !== 'stable') {
+      console.warn(
+        `[WebRTC] 跳过发起 offer: signalingState=${pc.signalingState}, user=${peerUserId}`,
+      )
+      return
+    }
+
+    try {
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      sendSignalFn!(peerUserId, 'offer', pc.localDescription)
+      console.log(`[WebRTC] 已发送 offer: user=${peerUserId}`)
+    } catch (e) {
+      console.error(`[WebRTC] 发起 offer 失败 (${peerUserId}):`, e)
+      // 发起异常 → 关闭 PC，等 ICE failed 检测触发重建
+      cleanupPeerSilent(peerUserId)
+    }
+  }
+
+  // ============================================================
+  // connectToPeer — 唯一的外部连接入口
+  // ============================================================
+
+  /**
+   * 为指定 peer 发起 / 建立 WebRTC 连接。
+   *
+   * - 较小方（myUserId < peerUserId）：创建 PC → 显式 createOffer 发起
+   * - 较大方（myUserId > peerUserId）：创建 PC → 等待远端 offer
+   *
+   * ✓ 由 handleParticipantsList / handleParticipantJoined 触发
+   * ✓ ICE/connection failed 自动重建时也会经此入口
+   */
+  async function connectToPeer(peerUserId: number): Promise<void> {
     if (!localStream || !myUserId || !sendSignalFn) {
       console.warn('[WebRTC] connectToPeer: 未初始化')
       return
     }
-    if (peerConnections.has(peerUserId)) {
-      console.log(`[WebRTC] connectToPeer: PC(${peerUserId}) 已存在，跳过`)
+
+    const existing = peerConnections.get(peerUserId)
+    if (existing) {
+      const ice = existing.iceConnectionState
+      const conn = existing.connectionState
+      if (ice === 'connected' || ice === 'completed' || conn === 'connected') {
+        console.log(`[WebRTC] connectToPeer: PC(${peerUserId}) 已连接，跳过`)
+        return
+      }
+      // 存在但未连接（checking/new/disconnected）：不重复创建，
+      // 由 ICE/connection 状态监听负责触发 rebuild
+      console.log(
+        `[WebRTC] connectToPeer: PC(${peerUserId}) 已存在 (ice=${ice}, conn=${conn})，跳过`,
+      )
       return
     }
 
-    if (myUserId < peerUserId) {
-      // 我 ID 较小 → 发起方 → 设 onnegotiationneeded 主动发 offer
+    const isInitiator = myUserId < peerUserId
+
+    if (isInitiator) {
       console.log(`[WebRTC] 发起 WebRTC 连接: my=${myUserId} < peer=${peerUserId}`)
-      createPeerConnection(peerUserId, true)
+      const pc = createPeerConnection(peerUserId)
+
+      // 让浏览器完成 addTrack 后的内部处理，确保 signalingState 回到 stable
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      await initiateOffer(peerUserId)
     } else {
-      // 我 ID 较大 → 等待方 → 不设 onnegotiationneeded，等对方 offer
       console.log(`[WebRTC] 等待对方 offer: my=${myUserId} > peer=${peerUserId}`)
-      createPeerConnection(peerUserId, false)
+      createPeerConnection(peerUserId)
     }
+  }
+
+  // ============================================================
+  // ICE / connection 失败 → 自动重建
+  // ============================================================
+
+  /**
+   * 调度 PC 重建（带指数退避和最大次数限制）。
+   * 由 oniceconnectionstatechange / onconnectionstatechange → failed 触发。
+   */
+  function scheduleRebuild(peerUserId: number): void {
+    // 清除已有重建定时器（避免堆积）
+    const existingTimer = rebuildTimers.get(peerUserId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    const attempts = rebuildAttempts.get(peerUserId) || 0
+    if (attempts >= MAX_REBUILD_ATTEMPTS) {
+      console.error(
+        `[WebRTC] 重建次数已达上限 (${MAX_REBUILD_ATTEMPTS}): user=${peerUserId}，停止重建`,
+      )
+      return
+    }
+
+    rebuildAttempts.set(peerUserId, attempts + 1)
+
+    // 指数退避：1s → 2s → 4s → 8s → 10s(封顶)
+    const delay = Math.min(REBUILD_BASE_DELAY_MS * Math.pow(2, attempts), REBUILD_MAX_DELAY_MS)
+    console.log(
+      `[WebRTC] 将在 ${delay / 1000}s 后重建 PC: user=${peerUserId} (第 ${attempts + 1}/${MAX_REBUILD_ATTEMPTS} 次)`,
+    )
+
+    const timer = setTimeout(() => {
+      rebuildTimers.delete(peerUserId)
+      rebuildPeer(peerUserId)
+    }, delay)
+
+    rebuildTimers.set(peerUserId, timer)
+  }
+
+  /** 关闭旧 PC → 重建 → 重新走发起 / 等待流程 */
+  async function rebuildPeer(peerUserId: number): Promise<void> {
+    // 页面已销毁（closeAll 清空了状态）
+    if (!localStream || !myUserId || !sendSignalFn) return
+
+    console.log(`[WebRTC] 开始重建 PC: user=${peerUserId}`)
+
+    // 关闭旧 PC（静默清理，不触发新一轮 on...statechange）
+    const oldPc = peerConnections.get(peerUserId)
+    if (oldPc) {
+      oldPc.oniceconnectionstatechange = null
+      oldPc.onconnectionstatechange = null
+      oldPc.onicecandidate = null
+      oldPc.ontrack = null
+      oldPc.close()
+      peerConnections.delete(peerUserId)
+    }
+
+    // 清除缓存的 ICE 候选
+    pendingCandidates.delete(peerUserId)
+
+    // 重新走 connectToPeer（总是走发起 / 等待逻辑）
+    await connectToPeer(peerUserId)
   }
 
   // ============================================================
@@ -176,17 +312,31 @@ export function useWebRTC() {
     }
   }
 
-  /** 收到远端 Offer → createAnswer */
+  /** 收到远端 Offer → createAnswer（含碰撞处理） */
   async function handleRemoteOffer(peerId: number, sdp: RTCSessionDescriptionInit): Promise<void> {
     console.log(`[WebRTC] 收到 offer: user=${peerId}`)
 
     let pc = peerConnections.get(peerId)
     if (!pc) {
-      // 如果 PC 不存在（竞态：participant_joined 和信号几乎同时到达），创建非发起方 PC
-      pc = createPeerConnection(peerId, false)
+      // PC 不存在 → 创建等待方 PC（不设 onnegotiationneeded）
+      pc = createPeerConnection(peerId)
     }
 
     try {
+      // ---- 碰撞处理（双方同时发起 offer） ----
+      // 仅在两方都重建时可能发生；正常情况下只有较小方发起。
+      if (pc.signalingState === 'have-local-offer' && myUserId !== null) {
+        const isPolite = myUserId < peerId
+        if (isPolite) {
+          // Polite 方：忽略远端 offer（我的 offer 优先）
+          console.log(`[WebRTC] polite 方忽略远端 offer: user=${peerId}`)
+          return
+        }
+        // Impolite 方：回滚本地 offer，接受远端
+        console.log(`[WebRTC] impolite 方回滚本地，接受远端: user=${peerId}`)
+        await pc.setLocalDescription({ type: 'rollback' })
+      }
+
       await pc.setRemoteDescription(new RTCSessionDescription(sdp))
       console.log(`[WebRTC] 远程描述已设置(offer): user=${peerId}`)
 
@@ -199,7 +349,7 @@ export function useWebRTC() {
       console.log(`[WebRTC] 已发送 answer: user=${peerId}`)
     } catch (e) {
       console.error(`[WebRTC] handleOffer 失败 (${peerId}):`, e)
-      closePeerConnection(peerId)
+      cleanupPeerSilent(peerId)
     }
   }
 
@@ -210,6 +360,15 @@ export function useWebRTC() {
       console.warn(`[WebRTC] 收到未知 peer ${peerId} 的 answer`)
       return
     }
+
+    // 本地必须有 pending offer 才接受 answer
+    if (pc.signalingState !== 'have-local-offer') {
+      console.warn(
+        `[WebRTC] 忽略 answer: signalingState=${pc.signalingState}, user=${peerId}`,
+      )
+      return
+    }
+
     try {
       console.log(`[WebRTC] 收到 answer: user=${peerId}`)
       await pc.setRemoteDescription(new RTCSessionDescription(sdp))
@@ -217,7 +376,7 @@ export function useWebRTC() {
       await flushPendingCandidates(peerId, pc)
     } catch (e) {
       console.error(`[WebRTC] handleAnswer 失败 (${peerId}):`, e)
-      closePeerConnection(peerId)
+      cleanupPeerSilent(peerId)
     }
   }
 
@@ -239,7 +398,9 @@ export function useWebRTC() {
         pendingCandidates.set(peerId, [])
       }
       pendingCandidates.get(peerId)!.push(candidate)
-      console.log(`[WebRTC] 缓存 ICE 候选: user=${peerId}, 缓存数=${pendingCandidates.get(peerId)!.length}`)
+      console.log(
+        `[WebRTC] 缓存 ICE 候选: user=${peerId}, 缓存数=${pendingCandidates.get(peerId)!.length}`,
+      )
     }
   }
 
@@ -277,9 +438,17 @@ export function useWebRTC() {
     remoteAudios.set(peerId, audio)
   }
 
-  function closePeerConnection(peerId: number): void {
+  /**
+   * 静默清理单个 peer（不触发新的状态变更回调）。
+   * 用于协商失败、连接异常时的内部清理，不需要通知外部。
+   */
+  function cleanupPeerSilent(peerId: number): void {
     const pc = peerConnections.get(peerId)
     if (pc) {
+      pc.oniceconnectionstatechange = null
+      pc.onconnectionstatechange = null
+      pc.onicecandidate = null
+      pc.ontrack = null
       pc.close()
       peerConnections.delete(peerId)
     }
@@ -290,18 +459,56 @@ export function useWebRTC() {
       remoteAudios.delete(peerId)
     }
     pendingCandidates.delete(peerId)
+
+    // 清理重建状态
+    const timer = rebuildTimers.get(peerId)
+    if (timer) {
+      clearTimeout(timer)
+      rebuildTimers.delete(peerId)
+    }
   }
 
+  /**
+   * 关闭与指定 peer 的连接及音频（外部调用：participant_left 或主动断开）。
+   * 也会清理该 peer 的重建状态。
+   */
+  function closePeerConnection(peerId: number): void {
+    // 先清理重建状态（避免 active 的 rebuild timer 在外部 close 后又重建 PC）
+    const timer = rebuildTimers.get(peerId)
+    if (timer) {
+      clearTimeout(timer)
+      rebuildTimers.delete(peerId)
+    }
+    rebuildAttempts.delete(peerId)
+
+    cleanupPeerSilent(peerId)
+  }
+
+  /** 关闭所有连接（组件卸载 / 离开会议时调用） */
   function closeAll(): void {
-    peerConnections.forEach((pc) => pc.close())
+    // 1. 清除所有重建定时器
+    rebuildTimers.forEach((timer) => clearTimeout(timer))
+    rebuildTimers.clear()
+    rebuildAttempts.clear()
+
+    // 2. 关闭所有 RTCPeerConnection
+    peerConnections.forEach((pc) => {
+      pc.oniceconnectionstatechange = null
+      pc.onconnectionstatechange = null
+      pc.onicecandidate = null
+      pc.ontrack = null
+      pc.close()
+    })
     peerConnections.clear()
 
+    // 3. 清理音频元素
     remoteAudios.forEach((audio) => {
       audio.srcObject = null
       audio.remove()
     })
     remoteAudios.clear()
 
+    // 4. 清理 ICE 缓存与状态引用
     pendingCandidates.clear()
     localStream = null
     myUserId = null

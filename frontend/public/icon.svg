@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5B400"/>
+      <stop offset="100%" stop-color="#D99A00"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="120" fill="url(#bgGrad)"/>
+
+  <!--
+    Meetily_AI — The Manuscript (叠页)
+    三层错位页面 + AI 高亮条
+    隐喻: 多场会议记录 → AI 标记关键信息 → 结构化纪要
+    -->
+
+  <!-- Layer 1: Bottom page (deepest, most rotated — raw meeting audio) -->
+  <g transform="rotate(-8, 256, 260)">
+    <rect x="108" y="132" width="200" height="256" rx="16" fill="#1C1917" opacity="0.12"/>
+    <!-- Subtle page lines -->
+    <rect x="128" y="158" width="130" height="4" rx="2" fill="#1C1917" opacity="0.08"/>
+    <rect x="128" y="178" width="100" height="4" rx="2" fill="#1C1917" opacity="0.06"/>
+    <rect x="128" y="198" width="140" height="4" rx="2" fill="#1C1917" opacity="0.06"/>
+  </g>
+
+  <!-- Layer 2: Middle page (slightly rotated — AI processing layer) -->
+  <g transform="rotate(-4, 256, 256)">
+    <rect x="118" y="118" width="200" height="256" rx="16" fill="#1C1917" opacity="0.3"/>
+    <!-- Faded text lines -->
+    <rect x="138" y="148" width="120" height="5" rx="2.5" fill="#FFE089" opacity="0.2"/>
+    <rect x="138" y="168" width="85" height="5" rx="2.5" fill="#FFE089" opacity="0.15"/>
+    <rect x="138" y="188" width="150" height="5" rx="2.5" fill="#FFE089" opacity="0.15"/>
+    <rect x="138" y="208" width="100" height="5" rx="2.5" fill="#FFE089" opacity="0.1"/>
+  </g>
+
+  <!-- Layer 3: Top page (upright — final meeting minutes) -->
+  <g>
+    <rect x="140" y="108" width="200" height="256" rx="16" fill="#1C1917" opacity="0.9"/>
+
+    <!-- Title bar / header -->
+    <rect x="165" y="135" width="150" height="6" rx="3" fill="#FFE089" opacity="0.55"/>
+
+    <!-- Content text lines (meeting notes body) -->
+    <rect x="165" y="160" width="145" height="5" rx="2.5" fill="#FFE089" opacity="0.35"/>
+    <rect x="165" y="178" width="110" height="5" rx="2.5" fill="#FFE089" opacity="0.35"/>
+    <rect x="165" y="196" width="135" height="5" rx="2.5" fill="#FFE089" opacity="0.3"/>
+
+    <!-- 🔑 AI Highlighter bar (the key visual element) -->
+    <rect x="160" y="220" width="165" height="22" rx="4" fill="#FFE089" opacity="0.8"/>
+
+    <!-- Text lines below highlight -->
+    <rect x="165" y="262" width="140" height="4" rx="2" fill="#FFE089" opacity="0.25"/>
+    <rect x="165" y="280" width="90" height="4" rx="2" fill="#FFE089" opacity="0.2"/>
+    <rect x="165" y="298" width="125" height="4" rx="2" fill="#FFE089" opacity="0.2"/>
+    <rect x="165" y="316" width="70" height="4" rx="2" fill="#FFE089" opacity="0.15"/>
+
+    <!-- AI Marker dot — the spark of intelligence -->
+    <circle cx="330" cy="231" r="6" fill="#1C1917" opacity="0.12"/>
+    <circle cx="330" cy="231" r="4" fill="#FFFBF0" opacity="0.9"/>
+    <circle cx="342" cy="220" r="2.5" fill="#FFFBF0" opacity="0.5"/>
+    <circle cx="320" cy="242" r="2" fill="#FFFBF0" opacity="0.35"/>
+  </g>
+</svg>

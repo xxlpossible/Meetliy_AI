@@ -40,18 +40,9 @@ const registerForm = reactive({ username: '', password: '', confirmPassword: '' 
 
 /** 密码规则：8-20 位，且必须同时包含字母和数字 */
 const passwordValidator = (_rule: any, value: string, cb: (err?: Error) => void) => {
-  if (!value) {
-    cb(new Error('请输入密码'))
-    return
-  }
-  if (value.length < 8 || value.length > 20) {
-    cb(new Error('密码长度需为 8-20 位'))
-    return
-  }
-  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
-    cb(new Error('密码必须同时包含字母和数字'))
-    return
-  }
+  if (!value) { cb(new Error('请输入密码')); return }
+  if (value.length < 8 || value.length > 20) { cb(new Error('密码长度需为 8-20 位')); return }
+  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) { cb(new Error('密码必须同时包含字母和数字')); return }
   cb()
 }
 
@@ -74,7 +65,6 @@ async function handleRegister() {
   try {
     await authStore.register({ username: registerForm.username, password: registerForm.password, confirmPassword: registerForm.confirmPassword })
     ElMessage.success('注册成功，请登录')
-    // 清空表单并切换回登录页
     registerForm.username = ''
     registerForm.password = ''
     registerForm.confirmPassword = ''
@@ -93,53 +83,52 @@ async function handleRegister() {
     <div class="login-page">
       <!-- ===== 左侧品牌面板 ===== -->
       <aside class="brand-panel">
-        <div class="brand-logo">
-          <div class="brand-logo-icon">M</div>
-          <span class="brand-logo-text">Meetily</span>
-        </div>
-
-        <div class="brand-tagline">
-          <h1>每一次会议<br />都值得被记住</h1>
-          <p>AI 驱动的会议助手，提供实时转写、智能摘要与知识库检索。</p>
-        </div>
-
-        <div class="brand-features">
-          <div class="brand-feature">
-            <span class="brand-feature-dot"></span>
-            实时语音转写，支持多人会议
+        <div class="brand-inner">
+          <div class="brand-logo">
+            <img src="/icon.svg" alt="Meetily AI" class="brand-logo-img" />
+            <span class="brand-logo-text">Meetily AI</span>
           </div>
-          <div class="brand-feature">
-            <span class="brand-feature-dot"></span>
-            AI 自动生成会议摘要与行动项
+          <div class="brand-tagline">
+            <h1>每一次会议<br />都值得被记住</h1>
+            <p>AI 驱动的会议助手，提供实时转写、智能摘要与知识库检索。</p>
           </div>
-          <div class="brand-feature">
-            <span class="brand-feature-dot"></span>
-            知识库检索，随时查阅会议上下文
+          <div class="brand-features">
+            <div class="brand-feature">
+              <span class="brand-feature-dot"></span> 实时语音转写，支持多人会议
+            </div>
+            <div class="brand-feature">
+              <span class="brand-feature-dot"></span> AI 自动生成会议摘要与行动项
+            </div>
+            <div class="brand-feature">
+              <span class="brand-feature-dot"></span> 知识库检索，随时查阅会议上下文
+            </div>
           </div>
         </div>
       </aside>
 
       <!-- ===== 右侧表单面板 ===== -->
       <main class="form-panel">
+        <!-- 移动端：表单上方 logo（桌面端隐藏） -->
+        <div class="mobile-brand">
+          <img src="/icon.svg" alt="Meetily AI" class="mobile-brand-img" />
+          <span class="mobile-brand-text">Meetily AI</span>
+        </div>
+
         <div class="form-card">
           <!-- 登录 -->
           <section v-show="activeTab === 'login'" class="form-section">
             <div class="form-header">
               <h2>欢迎回来</h2>
-              <p>登录以继续您的会议工作空间</p>
+              <p>登录以继续</p>
             </div>
-            <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top">
+            <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" label-position="top" @keyup.enter="handleLogin">
               <el-form-item prop="username">
-                <template #label>
-                  <span class="custom-label">用户名</span>
-                </template>
+                <template #label><span class="custom-label">用户名</span></template>
                 <el-input v-model="loginForm.username" placeholder="输入您的用户名" size="large" />
               </el-form-item>
               <el-form-item prop="password">
-                <template #label>
-                  <span class="custom-label">密码</span>
-                </template>
-                <el-input v-model="loginForm.password" type="password" placeholder="输入您的密码" size="large" show-password @keyup.enter="handleLogin" />
+                <template #label><span class="custom-label">密码</span></template>
+                <el-input v-model="loginForm.password" type="password" placeholder="输入您的密码" size="large" show-password />
               </el-form-item>
               <button type="button" class="login-submit-btn" :disabled="loading" @click="handleLogin">
                 <span v-if="loading" class="btn-spinner"></span>
@@ -155,26 +144,20 @@ async function handleRegister() {
           <section v-show="activeTab === 'register'" class="form-section">
             <div class="form-header">
               <h2>创建账号</h2>
-              <p>加入 Meetily，让会议更高效</p>
+              <p>加入 Meetily AI</p>
             </div>
-            <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-position="top">
+            <el-form ref="registerFormRef" :model="registerForm" :rules="registerRules" label-position="top" @keyup.enter="handleRegister">
               <el-form-item prop="username">
-                <template #label>
-                  <span class="custom-label">用户名</span>
-                </template>
+                <template #label><span class="custom-label">用户名</span></template>
                 <el-input v-model="registerForm.username" placeholder="3-20位，字母开头" size="large" />
               </el-form-item>
               <el-form-item prop="password">
-                <template #label>
-                  <span class="custom-label">密码</span>
-                </template>
+                <template #label><span class="custom-label">密码</span></template>
                 <el-input v-model="registerForm.password" type="password" placeholder="8-20位，含字母和数字" size="large" show-password />
               </el-form-item>
               <el-form-item prop="confirmPassword">
-                <template #label>
-                  <span class="custom-label">确认密码</span>
-                </template>
-                <el-input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" size="large" show-password @keyup.enter="handleRegister" />
+                <template #label><span class="custom-label">确认密码</span></template>
+                <el-input v-model="registerForm.confirmPassword" type="password" placeholder="再次输入密码" size="large" show-password />
               </el-form-item>
               <button type="button" class="login-submit-btn" :disabled="loading" @click="handleRegister">
                 <span v-if="loading" class="btn-spinner"></span>
@@ -208,9 +191,8 @@ async function handleRegister() {
 .brand-panel {
   background: linear-gradient(160deg, #2c241b 0%, #1a1612 100%);
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 56px 48px;
+  align-items: center;
+  justify-content: center;
   position: relative;
   overflow: hidden;
 
@@ -225,28 +207,37 @@ async function handleRegister() {
     background: radial-gradient(circle, rgba(245, 180, 0, 0.08) 0%, transparent 70%);
     pointer-events: none;
   }
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -80px;
+    left: -80px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(245, 180, 0, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+}
+
+.brand-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 380px;
 }
 
 .brand-logo {
   display: flex;
   align-items: center;
   gap: 14px;
-  position: relative;
-  z-index: 1;
+  margin-bottom: 48px;
 }
 
-.brand-logo-icon {
+.brand-logo-img {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-amber-400), var(--color-amber-500));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: var(--color-stone-900);
-  font-weight: 700;
-  font-family: var(--font-display);
+  object-fit: contain;
 }
 
 .brand-logo-text {
@@ -258,8 +249,7 @@ async function handleRegister() {
 }
 
 .brand-tagline {
-  position: relative;
-  z-index: 1;
+  margin-bottom: 40px;
 
   h1 {
     font-family: var(--font-display);
@@ -275,16 +265,13 @@ async function handleRegister() {
     font-size: 17px;
     color: var(--color-stone-400);
     line-height: 1.7;
-    max-width: 360px;
   }
 }
 
 .brand-features {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  position: relative;
-  z-index: 1;
+  gap: 14px;
 }
 
 .brand-feature {
@@ -359,16 +346,10 @@ async function handleRegister() {
 }
 
 // ---- Element Plus 表单覆盖 ----
-:deep(.el-form-item) {
-  margin-bottom: 20px;
-}
+::deep(.el-form-item) { margin-bottom: 20px; }
+::deep(.el-form-item__label) { margin-bottom: 6px; padding-bottom: 0; }
 
-:deep(.el-form-item__label) {
-  margin-bottom: 6px;
-  padding-bottom: 0;
-}
-
-:deep(.el-input__wrapper) {
+::deep(.el-input__wrapper) {
   border-radius: 12px !important;
   border: 1.5px solid var(--color-stone-200) !important;
   background: var(--color-stone-50) !important;
@@ -376,41 +357,23 @@ async function handleRegister() {
   padding: 4px 16px !important;
   transition: all 0.2s;
 }
-
-:deep(.el-input.is-focus .el-input__wrapper) {
+::deep(.el-input.is-focus .el-input__wrapper) {
   border-color: var(--color-amber-400) !important;
   background: white !important;
   box-shadow: 0 0 0 3px rgba(245, 180, 0, 0.08) !important;
 }
-
-:deep(.el-input.is-error .el-input__wrapper) {
-  border-color: var(--color-error) !important;
-}
-
-:deep(.el-input__inner) {
+::deep(.el-input.is-error .el-input__wrapper) { border-color: var(--color-error) !important; }
+::deep(.el-input__inner) {
   font-size: 14px !important;
   font-family: var(--font-body) !important;
   color: var(--color-stone-800) !important;
   height: 42px !important;
   line-height: 42px !important;
-
-  &::placeholder {
-    color: var(--color-stone-400) !important;
-  }
+  &::placeholder { color: var(--color-stone-400) !important; }
 }
-
-:deep(.el-input__suffix) {
-  color: var(--color-stone-400);
-}
-
-:deep(.el-input__suffix-inner) {
-  font-size: 16px;
-}
-
-:deep(.el-form-item__error) {
-  font-size: 12px;
-  padding-top: 4px;
-}
+::deep(.el-input__suffix) { color: var(--color-stone-400); }
+::deep(.el-input__suffix-inner) { font-size: 16px; }
+::deep(.el-form-item__error) { font-size: 12px; padding-top: 4px; }
 
 // ---- 提交按钮 ----
 .login-submit-btn {
@@ -436,15 +399,8 @@ async function handleRegister() {
     transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(245, 180, 0, 0.3);
   }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
+  &:active:not(:disabled) { transform: translateY(0); }
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
 }
 
 .btn-spinner {
@@ -456,9 +412,11 @@ async function handleRegister() {
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+// ---- 移动端 Logo 头（默认隐藏，仅小屏显示） ----
+.mobile-brand {
+  display: none;
 }
 
 // ---- 切换提示 ----
@@ -466,20 +424,14 @@ async function handleRegister() {
   text-align: center;
   margin-top: 24px;
 
-  p {
-    font-size: 14px;
-    color: var(--color-stone-500);
-  }
+  p { font-size: 14px; color: var(--color-stone-500); }
 
   a {
     color: var(--color-amber-600);
     font-weight: 600;
     cursor: pointer;
     transition: color 0.15s;
-
-    &:hover {
-      color: var(--color-amber-500);
-    }
+    &:hover { color: var(--color-amber-500); }
   }
 }
 
@@ -488,14 +440,76 @@ async function handleRegister() {
   .login-page {
     grid-template-columns: 1fr;
   }
-  .brand-panel {
-    display: none;
-  }
+  .brand-panel { display: none; }
   .form-panel {
     padding: 32px 24px;
+    flex-direction: column;
+    gap: 28px;
   }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .mobile-brand-img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+  }
+
+  .mobile-brand-text {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--color-stone-800);
+  }
+
+  .form-card { padding: 36px 28px; }
+}
+
+@include respond-to(sm) {
+  .form-panel {
+    padding: 24px 16px;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .mobile-brand-img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+
+  .mobile-brand-text {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-stone-800);
+  }
+
   .form-card {
-    padding: 36px 28px;
+    padding: 28px 20px;
+    border-radius: 16px;
+  }
+
+  .form-header {
+    margin-bottom: 24px;
+    h2 { font-size: 22px; }
+  }
+
+  .login-submit-btn {
+    padding: 12px 0;
+    font-size: 14px;
   }
 }
 </style>

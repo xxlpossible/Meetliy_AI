@@ -276,4 +276,39 @@ onUnmounted(() => {
     box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
   }
 }
+
+// ===== 移动端响应式 =====
+@media (max-width: 639px) {
+  .confirm-modal {
+    max-width: calc(100vw - 32px);
+    border-radius: 16px;
+  }
+
+  .confirm-header {
+    padding: 20px 20px 12px;
+  }
+
+  .confirm-title {
+    font-size: 18px;
+  }
+
+  .confirm-body {
+    padding: 0 20px 20px;
+  }
+
+  .confirm-footer {
+    padding: 12px 20px;
+    gap: 8px;
+  }
+
+  .cfm-btn-cancel {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .cfm-btn-confirm {
+    padding: 10px 18px;
+    font-size: 13px;
+  }
+}
 </style>

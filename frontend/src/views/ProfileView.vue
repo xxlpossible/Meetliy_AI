@@ -430,5 +430,36 @@ onMounted(() => {
   .profile-card {
     padding: $space-6;
   }
+
+  .page-title {
+    font-size: 22px;
+  }
+}
+
+@include respond-to(sm) {
+  .profile-page {
+    padding: $space-3;
+  }
+
+  .profile-card {
+    padding: $space-4;
+    border-radius: var(--radius-lg);
+  }
+
+  .avatar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: $space-4;
+  }
+
+  .avatar-preview {
+    width: 72px;
+    height: 72px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    margin-bottom: $space-4;
+  }
 }
 </style>

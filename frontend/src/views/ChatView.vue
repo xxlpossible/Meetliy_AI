@@ -14,9 +14,11 @@ import { useChatStore } from '@/stores/chat'
 import { useChatSSE } from '@/composables/useChatSSE'
 import { renderMarkdown } from '@/utils/markdown'
 import type { ChatSession } from '@/api/types'
+import { useAuthStore } from '@/stores'
 
 const chatStore = useChatStore()
 const chatSSE = useChatSSE()
+const auth = useAuthStore()
 
 // ===== DOM 引用 =====
 const chatScrollRef = ref<HTMLElement>()
@@ -26,9 +28,37 @@ const inputTextareaRef = ref<HTMLTextAreaElement>()
 const showNewChatModal = ref(false)
 const showEditContextModal = ref(false)
 
+// ===== 移动端侧栏控制 =====
+const isMobile = ref(false)
+const showMobileSidebar = ref(true)
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768
+  // 移动端默认显示侧栏（会话列表）
+  if (isMobile.value) {
+    showMobileSidebar.value = true
+  }
+}
+
+function toggleSidebar() {
+  showMobileSidebar.value = !showMobileSidebar.value
+}
+
+function onSessionSelect(session: ChatSession) {
+  selectSession(session)
+  // 移动端选完会话后自动切换到聊天区
+  if (isMobile.value) {
+    showMobileSidebar.value = false
+  }
+}
+
 // ===== 计算属性 =====
 const currentSession = computed(() => chatStore.currentSession)
-const sessionName = computed(() => currentSession.value?.session_name || '新会话')
+const sessionName = computed(() => {
+  const raw = currentSession.value?.session_name || '新会话'
+  // 移动端：超过10个汉字截断 + 省略号
+  return raw.length > 10 ? raw.slice(0, 10) + '…' : raw
+})
 const selectedMeetings = computed(() => {
   if (!currentSession.value?.meeting_ids) return []
   return chatStore.availableMeetings.filter(m => currentSession.value!.meeting_ids.includes(m.id))
@@ -163,13 +193,15 @@ watch(() => {
 
 // ===== 生命周期 =====
 onMounted(async () => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
   await loadSessions()
 })
 </script>
 
 <template>
   <DefaultLayout>
-    <div class="chat-layout">
+    <div class="chat-layout" :class="{ 'mobile-layout': isMobile, 'show-sidebar': isMobile && showMobileSidebar, 'show-chat': isMobile && !showMobileSidebar }">
       <!-- 左侧会话列表 -->
       <aside class="chat-sidebar">
         <div class="sidebar-header">
@@ -210,7 +242,7 @@ onMounted(async () => {
               :key="session.session_id"
               class="chat-item"
               :class="{ active: currentSession?.session_id === session.session_id }"
-              @click="selectSession(session)"
+              @click="onSessionSelect(session)"
             >
               <div class="chat-item-icon">AI</div>
               <div class="chat-item-info">
@@ -270,6 +302,16 @@ onMounted(async () => {
       <main class="chat-main">
         <!-- 聊天头部 -->
         <header v-if="currentSession" class="chat-header">
+          <button
+            v-if="isMobile"
+            class="mobile-back-btn"
+            @click="toggleSidebar"
+            title="返回会话列表"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
           <div class="chat-header-left">
             <div class="chat-header-icon">AI</div>
             <div class="chat-header-info">
@@ -278,12 +320,16 @@ onMounted(async () => {
             </div>
           </div>
           <div class="chat-header-actions">
-            <button class="btn-edit-context" @click="openEditContextModal">
+            <button
+              class="btn-edit-context"
+              :class="{ 'icon-only': isMobile }"
+              @click="openEditContextModal"
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
-              修改讨论范围
+              <span class="btn-edit-text">修改讨论范围</span>
             </button>
           </div>
         </header>
@@ -329,6 +375,10 @@ onMounted(async () => {
             class="msg-row"
             :class="msg.role"
           >
+            <div class="msg-avatar" :class="msg.role">
+              <span v-if="msg.role === 'assistant'">AI</span>
+              <span v-else>{{ auth.username?.charAt(0) || '我' }}</span>
+            </div>
             <div class="msg-content">
               <!-- AI 消息：Markdown 渲染，流式时附带闪烁光标 -->
               <div
@@ -830,18 +880,44 @@ onMounted(async () => {
   }
 }
 
-// 消息气泡
+// 消息气泡（参照 mobile-responsive 设计：chat-msg 带 34px 圆形头像）
 .msg-row {
   display: flex;
+  align-items: flex-start;
+  gap: 10px;
   margin-bottom: 20px;
   animation: fadeSlideIn 0.3s ease-out;
 
   &.user {
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-direction: row-reverse;
   }
 
   &.assistant {
     justify-content: flex-start;
+  }
+}
+
+.msg-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-display);
+
+  &.assistant {
+    background: linear-gradient(135deg, var(--color-amber-400), var(--color-amber-500));
+    color: var(--color-stone-900);
+  }
+
+  &.user {
+    background: var(--color-stone-200);
+    color: var(--color-stone-600);
   }
 }
 
@@ -862,7 +938,7 @@ onMounted(async () => {
   .user & {
     background: var(--color-amber-400);
     color: var(--color-stone-900);
-    border-bottom-right-radius: 4px;
+    border-bottom-right-radius: var(--radius-sm);
     white-space: pre-wrap;
   }
 
@@ -870,7 +946,7 @@ onMounted(async () => {
     background: white;
     color: var(--color-stone-800);
     border: 1px solid var(--color-stone-200);
-    border-bottom-left-radius: 4px;
+    border-bottom-left-radius: var(--radius-sm);
   }
 
   // Markdown 样式（AI消息）
@@ -1110,6 +1186,193 @@ onMounted(async () => {
 
   &:hover {
     background: var(--color-stone-400);
+  }
+}
+
+// ===== 移动端响应式 =====
+@media (max-width: 767px) {
+  .mobile-layout {
+    grid-template-columns: 1fr;
+    position: relative;
+
+    .chat-sidebar,
+    .chat-main {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .chat-sidebar {
+      display: flex;
+      opacity: 1;
+      z-index: 10;
+      transition: opacity 0.2s, visibility 0.2s;
+    }
+
+    .chat-main {
+      display: flex;
+      opacity: 1;
+      z-index: 10;
+      transition: opacity 0.2s, visibility 0.2s;
+    }
+
+    // 默认显示侧栏
+    &.show-sidebar {
+      .chat-sidebar {
+        opacity: 1;
+        visibility: visible;
+      }
+      .chat-main {
+        opacity: 0;
+        visibility: hidden;
+      }
+    }
+
+    // 显示聊天区
+    &.show-chat {
+      .chat-sidebar {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .chat-main {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+  }
+
+  // 移动端返回按钮
+  .mobile-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: var(--color-stone-100);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--color-stone-600);
+    flex-shrink: 0;
+    margin-right: 10px;
+    transition: all 0.15s;
+
+    &:hover {
+      background: var(--color-stone-200);
+      color: var(--color-stone-800);
+    }
+  }
+
+  // 消息气泡在移动端更宽
+  .msg-content {
+    max-width: 88%;
+  }
+
+  .chat-header {
+    padding: 12px 16px;
+    gap: 10px;
+  }
+
+  .chat-header-icon {
+    display: none;
+  }
+
+  .chat-header-info {
+    flex: 1;
+    text-align: center;
+
+    p {
+      display: none;
+    }
+  }
+
+  .chat-header-info h2 {
+    font-size: 14px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .chat-header-actions {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .btn-edit-context.icon-only {
+    padding: 8px;
+    min-width: 36px;
+    justify-content: center;
+
+    .btn-edit-text {
+      display: none;
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  .chat-scroll {
+    padding: 16px;
+  }
+
+  .chat-input-area {
+    padding: 12px 16px 16px;
+  }
+
+  .chat-input {
+    padding: 12px 20px;
+    min-height: 44px;
+    font-size: 14px;
+    border-radius: var(--radius-full);
+  }
+
+  .chat-send-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    border-radius: 50%;
+  }
+
+  // 快捷问题
+  .quick-questions {
+    gap: 6px;
+  }
+
+  .qq-chip {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
+  // 会话列表内边距
+  .sidebar-header {
+    padding: 14px 16px 10px;
+  }
+
+  .sidebar-search {
+    padding: 10px 16px;
+  }
+
+  .chat-list {
+    padding: 8px;
+  }
+
+  .chat-pagination {
+    padding: 8px 16px 12px;
+  }
+
+  // 触摸设备输入优化
+  .chat-input-area {
+    padding-bottom: max(16px, var(--safe-area-bottom));
+  }
+
+  .chat-input {
+    min-height: var(--touch-target-min);
+  }
+
+  .chat-send-btn {
+    min-width: var(--touch-target-min);
   }
 }
 </style>

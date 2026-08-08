@@ -284,6 +284,11 @@ class MeetingManager:
             conn = room.participants.get(to_user_id) if room else None
         if conn:
             self._send_to_participant(conn, message)
+        else:
+            logger.warning(
+                f"信令丢弃: 目标参会者不在房间 meeting={meeting_id} "
+                f"to_user={to_user_id} type={signal_type} from={from_user_id}"
+            )
 
     def broadcast_participant_event(
         self, meeting_id: str, user_id: int, username: str, joined: bool, avatar: str | None = None
